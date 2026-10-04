@@ -24,12 +24,13 @@ data class Snippet(
             versionId: UUID,
             createdAt: Instant,
         ): Snippet {
-            val firstVersion = SnippetVersion.first(
-                id = versionId,
-                snippetId = id,
-                originalContent = content,
-                createdAt = createdAt,
-            )
+            val firstVersion =
+                SnippetVersion.first(
+                    id = versionId,
+                    snippetId = id,
+                    originalContent = content,
+                    createdAt = createdAt,
+                )
 
             return Snippet(
                 id = id,

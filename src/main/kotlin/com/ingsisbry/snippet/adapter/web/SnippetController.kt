@@ -1,8 +1,8 @@
 package com.ingsisbry.snippet.adapter.web
 
+import com.ingsisbry.snippet.adapter.web.dto.CreateSnippetRequest
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
-import com.ingsisbry.snippet.adapter.web.dto.CreateSnippetRequest
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController
 class SnippetController(
     private val createSnippet: CreateSnippet,
 ) {
-
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun create(

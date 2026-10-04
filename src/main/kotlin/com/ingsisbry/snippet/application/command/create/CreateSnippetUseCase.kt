@@ -11,24 +11,23 @@ import java.util.UUID
 class CreateSnippetUseCase(
     private val snippetRepository: SnippetRepository,
     private val clock: Clock,
-    private val idGenerator: () -> UUID = UUID::randomUUID,
 ) : CreateSnippet {
-
     override fun execute(command: CreateSnippetCommand): Snippet {
-        val snippetId = idGenerator()
-        val versionId = idGenerator()
+        val snippetId = UUID.randomUUID()
+        val versionId = UUID.randomUUID()
 
-        val snippet = Snippet.create(
-            id = snippetId,
-            name = command.name,
-            description = command.description,
-            language = command.language,
-            languageVersion = command.languageVersion,
-            owner = command.owner,
-            content = command.content,
-            versionId = versionId,
-            createdAt = Instant.now(clock),
-        )
+        val snippet =
+            Snippet.create(
+                id = snippetId,
+                name = command.name,
+                description = command.description,
+                language = command.language,
+                languageVersion = command.languageVersion,
+                owner = command.owner,
+                content = command.content,
+                versionId = versionId,
+                createdAt = Instant.now(clock),
+            )
 
         return snippetRepository.save(snippet)
     }
