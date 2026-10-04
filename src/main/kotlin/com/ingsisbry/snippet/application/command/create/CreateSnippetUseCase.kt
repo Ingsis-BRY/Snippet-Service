@@ -2,10 +2,12 @@ package com.ingsisbry.snippet.application.command.create
 
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.domain.Snippet
+import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
+@Service
 class CreateSnippetUseCase(
     private val snippetRepository: SnippetRepository,
     private val clock: Clock,
