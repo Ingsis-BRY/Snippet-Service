@@ -12,4 +12,6 @@ class InMemorySnippetRepository : SnippetRepository {
         snippets[snippet.id] = snippet
         return snippet
     }
+
+    override fun findById(id: UUID): Snippet? = snippets[id]
 }
