@@ -39,6 +39,7 @@ class SnippetController(
     }
 
     @GetMapping("/{snippetId}")
+    @ResponseStatus(HttpStatus.OK)
     fun get(
         @PathVariable snippetId: UUID,
     ) = getSnippet.execute(GetSnippetQuery(snippetId))
