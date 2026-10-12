@@ -13,8 +13,9 @@ class ListSnippetsUseCase(
             "Page must be greater than or equal to 0"
         }
 
-        require(query.size >= 1) {
-            "Size must be greater than or equal to 1"
+        val maximumSize = 100
+        require(query.size in 1..maximumSize) {
+            "Size must be between 1 and 100"
         }
 
         return snippetQueryRepository.findAll(query)
