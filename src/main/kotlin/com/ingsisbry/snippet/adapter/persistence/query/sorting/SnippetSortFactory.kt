@@ -1,4 +1,4 @@
-package com.ingsisbry.snippet.adapter.persistence.sorting
+package com.ingsisbry.snippet.adapter.persistence.query.sorting
 
 import com.ingsisbry.snippet.application.query.list.SnippetSortField
 import com.ingsisbry.snippet.application.query.list.SortDirection

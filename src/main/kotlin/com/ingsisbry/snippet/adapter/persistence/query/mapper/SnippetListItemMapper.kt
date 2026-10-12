@@ -1,4 +1,4 @@
-package com.ingsisbry.snippet.adapter.persistence.mapper
+package com.ingsisbry.snippet.adapter.persistence.query.mapper
 
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import com.ingsisbry.snippet.application.query.list.SnippetListItem

@@ -1,4 +1,4 @@
-package com.ingsisbry.snippet.adapter.persistence.filter
+package com.ingsisbry.snippet.adapter.persistence.query.filter
 
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import jakarta.persistence.criteria.CriteriaBuilder

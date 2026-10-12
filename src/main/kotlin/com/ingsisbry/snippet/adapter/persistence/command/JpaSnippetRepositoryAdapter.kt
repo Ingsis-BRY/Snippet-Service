@@ -1,4 +1,4 @@
-package com.ingsisbry.snippet.adapter.persistence
+package com.ingsisbry.snippet.adapter.persistence.command
 
 import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity

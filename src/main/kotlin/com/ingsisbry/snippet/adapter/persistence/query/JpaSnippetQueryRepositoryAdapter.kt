@@ -1,11 +1,11 @@
-package com.ingsisbry.snippet.adapter.persistence
+package com.ingsisbry.snippet.adapter.persistence.query
 
-import com.ingsisbry.snippet.adapter.persistence.filter.SnippetFilterRegistry
-import com.ingsisbry.snippet.adapter.persistence.mapper.SnippetListItemMapper
+import com.ingsisbry.snippet.adapter.persistence.query.filter.SnippetFilterRegistry
+import com.ingsisbry.snippet.adapter.persistence.query.mapper.SnippetListItemMapper
+import com.ingsisbry.snippet.adapter.persistence.query.sorting.SnippetSortFactory
+import com.ingsisbry.snippet.adapter.persistence.query.specification.SnippetAccessSpecifications
 import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
-import com.ingsisbry.snippet.adapter.persistence.sorting.SnippetSortFactory
-import com.ingsisbry.snippet.adapter.persistence.specification.SnippetAccessSpecifications
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
@@ -24,7 +24,7 @@ class JpaSnippetQueryRepositoryAdapter(
     @Transactional(readOnly = true)
     override fun findAll(query: ListSnippetsQuery): PageResult<SnippetListItem> {
         if (query.relationship == SnippetRelationship.SHARED) {
-            return PageResult.empty(
+            return PageResult.Companion.empty(
                 page = query.page,
                 size = query.size,
             )
