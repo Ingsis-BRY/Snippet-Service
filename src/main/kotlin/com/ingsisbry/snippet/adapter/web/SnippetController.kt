@@ -2,6 +2,8 @@ package com.ingsisbry.snippet.adapter.web
 
 import com.ingsisbry.snippet.adapter.web.dto.CreateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
+import com.ingsisbry.snippet.adapter.web.dto.response.CreateSnippetResponse
+import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
@@ -32,25 +34,28 @@ class SnippetController(
     @ResponseStatus(HttpStatus.CREATED)
     fun create(
         @RequestBody request: CreateSnippetRequest,
-    ) {
-        createSnippet.execute(
-            CreateSnippetCommand(
-                name = request.name,
-                description = request.description,
-                language = request.language,
-                languageVersion = request.languageVersion,
-                owner = "Anonymous",
-                content = request.content,
-            ),
-        )
+    ): CreateSnippetResponse {
+        val snippet =
+            createSnippet.execute(
+                CreateSnippetCommand(
+                    name = request.name,
+                    description = request.description,
+                    language = request.language,
+                    languageVersion = request.languageVersion,
+                    owner = "Anonymous",
+                    content = request.content,
+                ),
+            )
+        return CreateSnippetResponse(id = snippet.id)
     }
 
     @GetMapping("/{snippetId}")
     @ResponseStatus(HttpStatus.OK)
     fun get(
         @PathVariable snippetId: UUID,
-    ) {
-        getSnippet.execute(GetSnippetQuery(snippetId))
+    ): GetSnippetResponse {
+        val snippet = getSnippet.execute(GetSnippetQuery(snippetId))
+        return GetSnippetResponse.from(snippet)
     }
 
     @GetMapping
