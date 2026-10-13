@@ -6,19 +6,24 @@ import com.ingsisbry.snippet.adapter.persistence.query.sorting.SnippetSortFactor
 import com.ingsisbry.snippet.adapter.persistence.query.specification.SnippetAccessSpecifications
 import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
+import com.ingsisbry.snippet.adapter.persistence.snippetversion.JpaSnippetVersionRepository
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
 import com.ingsisbry.snippet.application.query.list.SnippetRelationship
+import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.domain.SnippetVersion
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 @Repository
 class JpaSnippetQueryRepositoryAdapter(
     private val repository: JpaSnippetRepository,
+    private val versionRepository: JpaSnippetVersionRepository,
     private val filterRegistry: SnippetFilterRegistry,
 ) : SnippetQueryRepository {
     @Transactional(readOnly = true)
@@ -53,6 +58,38 @@ class JpaSnippetQueryRepositoryAdapter(
             size = result.size,
             totalElements = result.totalElements,
             totalPages = result.totalPages,
+        )
+    }
+
+    @Transactional
+    override fun findById(id: UUID): Snippet? {
+        val entity = repository.findById(id).orElse(null) ?: return null
+
+        val versionEntity =
+            versionRepository
+                .findById(entity.currentVersionId)
+                .orElseThrow {
+                    IllegalStateException(
+                        "Snippet ${entity.id} references missing version ${entity.currentVersionId}",
+                    )
+                }
+
+        return Snippet(
+            id = entity.id,
+            name = entity.name,
+            description = entity.description,
+            language = entity.language,
+            languageVersion = entity.languageVersion,
+            owner = entity.owner,
+            currentVersion =
+                SnippetVersion(
+                    id = versionEntity.id,
+                    snippetId = versionEntity.snippetId,
+                    versionNumber = versionEntity.versionNumber,
+                    originalContent = versionEntity.originalContent,
+                    formattedContent = versionEntity.formattedContent,
+                    createdAt = versionEntity.createdAt,
+                ),
         )
     }
 }
