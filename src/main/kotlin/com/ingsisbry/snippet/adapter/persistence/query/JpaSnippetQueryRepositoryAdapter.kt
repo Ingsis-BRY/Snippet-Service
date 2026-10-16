@@ -9,6 +9,7 @@ import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.JpaSnippetVersionRepository
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
+import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
 import com.ingsisbry.snippet.application.query.list.SnippetRelationship
@@ -25,6 +26,7 @@ class JpaSnippetQueryRepositoryAdapter(
     private val repository: JpaSnippetRepository,
     private val versionRepository: JpaSnippetVersionRepository,
     private val filterRegistry: SnippetFilterRegistry,
+    private val contentStorage: SnippetContentStorage,
 ) : SnippetQueryRepository {
     @Transactional(readOnly = true)
     override fun findAll(query: ListSnippetsQuery): PageResult<SnippetListItem> {
@@ -61,7 +63,7 @@ class JpaSnippetQueryRepositoryAdapter(
         )
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     override fun findById(id: UUID): Snippet? {
         val entity = repository.findById(id).orElse(null) ?: return null
 
@@ -86,8 +88,14 @@ class JpaSnippetQueryRepositoryAdapter(
                     id = versionEntity.id,
                     snippetId = versionEntity.snippetId,
                     versionNumber = versionEntity.versionNumber,
-                    originalContent = versionEntity.originalContent,
-                    formattedContent = versionEntity.formattedContent,
+                    originalContent =
+                        contentStorage.retrieve(
+                            versionEntity.originalContentKey,
+                        ),
+                    formattedContent =
+                        versionEntity.formattedContentKey?.let(
+                            contentStorage::retrieve,
+                        ),
                     createdAt = versionEntity.createdAt,
                 ),
         )

@@ -15,14 +15,17 @@ class JpaSnippetRepositoryAdapter(
     private val versionRepository: JpaSnippetVersionRepository,
 ) : SnippetRepository {
     @Transactional
-    override fun save(snippet: Snippet): Snippet {
+    override fun save(
+        snippet: Snippet,
+        originalContentKey: String,
+    ): Snippet {
         val versionEntity =
             SnippetVersionEntity(
                 id = snippet.currentVersion.id,
                 snippetId = snippet.currentVersion.snippetId,
                 versionNumber = snippet.currentVersion.versionNumber,
-                originalContent = snippet.currentVersion.originalContent,
-                formattedContent = snippet.currentVersion.formattedContent,
+                originalContentKey = originalContentKey,
+                formattedContentKey = null,
                 createdAt = snippet.currentVersion.createdAt,
             )
 

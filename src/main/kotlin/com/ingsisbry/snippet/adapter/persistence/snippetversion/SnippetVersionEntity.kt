@@ -17,9 +17,9 @@ class SnippetVersionEntity(
     @Column(nullable = false)
     val versionNumber: Int,
     @Column(nullable = false, columnDefinition = "TEXT")
-    val originalContent: String,
-    @Column(columnDefinition = "TEXT")
-    val formattedContent: String?,
+    val originalContentKey: String,
+    @Column(nullable = true, columnDefinition = "TEXT")
+    val formattedContentKey: String?,
     @Column(nullable = false)
     val createdAt: Instant,
 )
