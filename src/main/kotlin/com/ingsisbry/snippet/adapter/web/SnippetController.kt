@@ -7,11 +7,13 @@ import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
+import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
@@ -27,6 +30,7 @@ import java.util.UUID
 class SnippetController(
     private val createSnippet: CreateSnippet,
     private val getSnippet: GetSnippet,
+    private val deleteSnippet: DeleteSnippet,
     private val listSnippets: ListSnippets,
     private val queryFactory: ListSnippetsQueryFactory,
 ) {
@@ -56,6 +60,21 @@ class SnippetController(
     ): GetSnippetResponse {
         val snippet = getSnippet.execute(GetSnippetQuery(snippetId))
         return GetSnippetResponse.from(snippet)
+    }
+
+    @DeleteMapping("/{snippetId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(
+        @PathVariable snippetId: UUID,
+    ) {
+        val deleted = deleteSnippet.execute(snippetId)
+
+        if (!deleted) {
+            throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Snippet not found",
+            )
+        }
     }
 
     @GetMapping

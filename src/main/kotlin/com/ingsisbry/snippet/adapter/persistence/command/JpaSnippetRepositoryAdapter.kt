@@ -8,6 +8,7 @@ import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.domain.Snippet
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 @Repository
 class JpaSnippetRepositoryAdapter(
@@ -45,5 +46,28 @@ class JpaSnippetRepositoryAdapter(
         repository.save(snippetEntity)
 
         return snippet
+    }
+
+    @Transactional
+    override fun deleteById(id: UUID): List<String>? {
+        val snippet =
+            repository.findById(id).orElse(null)
+                ?: return null
+
+        val versions = versionRepository.findAllBySnippetId(id)
+
+        val contentKeys =
+            versions
+                .flatMap { version ->
+                    listOfNotNull(
+                        version.originalContentKey,
+                        version.formattedContentKey,
+                    )
+                }.distinct()
+
+        versionRepository.deleteAll(versions)
+        repository.delete(snippet)
+
+        return contentKeys
     }
 }
