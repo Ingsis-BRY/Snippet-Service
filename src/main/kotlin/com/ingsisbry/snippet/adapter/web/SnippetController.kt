@@ -7,15 +7,18 @@ import com.ingsisbry.snippet.adapter.web.dto.response.CreateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
+import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
+import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -38,6 +41,8 @@ class SnippetController(
     private val deleteSnippet: DeleteSnippet,
     private val listSnippets: ListSnippets,
     private val queryFactory: ListSnippetsQueryFactory,
+    private val downloadSnippet: DownloadSnippet,
+    private val snippetDownloadMapper: SnippetDownloadMapper,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -111,5 +116,28 @@ class SnippetController(
                 "Snippet not found",
             )
         }
+    }
+
+    @GetMapping("/{snippetId}/download")
+    fun download(
+        @PathVariable snippetId: UUID,
+        @RequestParam(defaultValue = "original") version: String,
+    ): ResponseEntity<ByteArray> {
+        val variant = snippetDownloadMapper.toVariant(version)
+
+        val content =
+            downloadSnippet.execute(
+                id = snippetId,
+                variant = variant,
+            ) ?: throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Snippet not found",
+            )
+
+        return snippetDownloadMapper.toResponse(
+            snippetId = snippetId,
+            variant = variant,
+            content = content,
+        )
     }
 }
