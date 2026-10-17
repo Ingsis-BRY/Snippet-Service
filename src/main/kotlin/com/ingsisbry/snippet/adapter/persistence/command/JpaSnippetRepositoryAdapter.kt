@@ -49,6 +49,39 @@ class JpaSnippetRepositoryAdapter(
     }
 
     @Transactional
+    override fun update(
+        snippet: Snippet,
+        originalContentKey: String,
+    ): Snippet {
+        val version = snippet.currentVersion
+
+        versionRepository.save(
+            SnippetVersionEntity(
+                id = version.id,
+                snippetId = snippet.id,
+                versionNumber = version.versionNumber,
+                originalContentKey = originalContentKey,
+                formattedContentKey = null,
+                createdAt = version.createdAt,
+            ),
+        )
+
+        repository.save(
+            SnippetEntity(
+                id = snippet.id,
+                name = snippet.name,
+                description = snippet.description,
+                language = snippet.language,
+                languageVersion = snippet.languageVersion,
+                owner = snippet.owner,
+                currentVersionId = version.id,
+            ),
+        )
+
+        return snippet
+    }
+
+    @Transactional
     override fun deleteById(id: UUID): List<String>? {
         val snippet =
             repository.findById(id).orElse(null)

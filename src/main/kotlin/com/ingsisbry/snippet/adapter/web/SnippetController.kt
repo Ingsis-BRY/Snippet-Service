@@ -1,13 +1,16 @@
 package com.ingsisbry.snippet.adapter.web
 
-import com.ingsisbry.snippet.adapter.web.dto.CreateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
+import com.ingsisbry.snippet.adapter.web.dto.request.CreateSnippetRequest
+import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.response.CreateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
+import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
+import com.ingsisbry.snippet.application.command.update.UpdateSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -30,6 +34,7 @@ import java.util.UUID
 class SnippetController(
     private val createSnippet: CreateSnippet,
     private val getSnippet: GetSnippet,
+    private val updateSnippet: UpdateSnippet,
     private val deleteSnippet: DeleteSnippet,
     private val listSnippets: ListSnippets,
     private val queryFactory: ListSnippetsQueryFactory,
@@ -53,6 +58,20 @@ class SnippetController(
         return CreateSnippetResponse(id = snippet.id)
     }
 
+    @GetMapping
+    @ResponseStatus(HttpStatus.OK)
+    fun list(
+        @RequestParam parameters: Map<String, String>,
+    ): PageResponse<SnippetListItem> {
+        val query =
+            queryFactory.create(
+                parameters = parameters,
+                user = "anonymous",
+            )
+
+        return PageResponse.from(listSnippets.execute(query))
+    }
+
     @GetMapping("/{snippetId}")
     @ResponseStatus(HttpStatus.OK)
     fun get(
@@ -60,6 +79,23 @@ class SnippetController(
     ): GetSnippetResponse {
         val snippet = getSnippet.execute(GetSnippetQuery(snippetId))
         return GetSnippetResponse.from(snippet)
+    }
+
+    @PutMapping("/{snippetId}")
+    fun update(
+        @PathVariable snippetId: UUID,
+        @RequestBody request: UpdateSnippetRequest,
+    ): UpdateSnippetResponse {
+        val updatedSnippet =
+            updateSnippet.execute(
+                id = snippetId,
+                request = request,
+            ) ?: throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Snippet not found",
+            )
+
+        return UpdateSnippetResponse.from(updatedSnippet)
     }
 
     @DeleteMapping("/{snippetId}")
@@ -75,19 +111,5 @@ class SnippetController(
                 "Snippet not found",
             )
         }
-    }
-
-    @GetMapping
-    @ResponseStatus(HttpStatus.OK)
-    fun list(
-        @RequestParam parameters: Map<String, String>,
-    ): PageResponse<SnippetListItem> {
-        val query =
-            queryFactory.create(
-                parameters = parameters,
-                user = "anonymous",
-            )
-
-        return PageResponse.from(listSnippets.execute(query))
     }
 }

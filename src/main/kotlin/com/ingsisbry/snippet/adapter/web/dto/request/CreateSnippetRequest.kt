@@ -1,4 +1,4 @@
-package com.ingsisbry.snippet.adapter.web.dto
+package com.ingsisbry.snippet.adapter.web.dto.request
 
 data class CreateSnippetRequest(
     val name: String,

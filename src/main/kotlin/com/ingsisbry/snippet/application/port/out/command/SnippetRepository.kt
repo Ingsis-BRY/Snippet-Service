@@ -9,5 +9,10 @@ interface SnippetRepository {
         originalContentKey: String,
     ): Snippet
 
+    fun update(
+        snippet: Snippet,
+        originalContentKey: String,
+    ): Snippet
+
     fun deleteById(id: UUID): List<String>?
 }
