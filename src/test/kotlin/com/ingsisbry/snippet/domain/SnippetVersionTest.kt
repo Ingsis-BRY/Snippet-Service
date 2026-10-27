@@ -7,7 +7,6 @@ import java.time.Instant
 import java.util.UUID
 
 class SnippetVersionTest {
-
     @Test
     fun `first should create initial version with version number one`() {
         val id = UUID.randomUUID()
@@ -15,12 +14,13 @@ class SnippetVersionTest {
         val createdAt = Instant.parse("2026-10-27T12:00:00Z")
         val content = "println(\"Hello, world!\")"
 
-        val version = SnippetVersion.first(
-            id = id,
-            snippetId = snippetId,
-            originalContent = content,
-            createdAt = createdAt,
-        )
+        val version =
+            SnippetVersion.first(
+                id = id,
+                snippetId = snippetId,
+                originalContent = content,
+                createdAt = createdAt,
+            )
 
         assertEquals(id, version.id)
         assertEquals(snippetId, version.snippetId)

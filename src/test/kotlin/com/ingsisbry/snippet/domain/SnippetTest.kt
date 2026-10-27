@@ -7,7 +7,6 @@ import java.time.Instant
 import java.util.UUID
 
 class SnippetTest {
-
     @Test
     fun `create should initialize snippet with the provided values`() {
         val id = UUID.randomUUID()
@@ -15,17 +14,18 @@ class SnippetTest {
         val createdAt = Instant.parse("2026-10-27T12:00:00Z")
         val content = "fun main() = println(\"Hello, world!\")"
 
-        val snippet = Snippet.create(
-            id = id,
-            name = "Hello World",
-            description = "A simple Kotlin snippet",
-            language = "Kotlin",
-            languageVersion = "2.3",
-            owner = "test-user",
-            content = content,
-            versionId = versionId,
-            createdAt = createdAt,
-        )
+        val snippet =
+            Snippet.create(
+                id = id,
+                name = "Hello World",
+                description = "A simple Kotlin snippet",
+                language = "Kotlin",
+                languageVersion = "2.3",
+                owner = "test-user",
+                content = content,
+                versionId = versionId,
+                createdAt = createdAt,
+            )
 
         assertEquals(id, snippet.id)
         assertEquals("Hello World", snippet.name)
