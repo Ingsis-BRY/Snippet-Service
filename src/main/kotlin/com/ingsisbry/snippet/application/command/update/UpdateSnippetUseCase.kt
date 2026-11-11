@@ -1,6 +1,5 @@
 package com.ingsisbry.snippet.application.command.update
 
-import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -17,10 +16,8 @@ class UpdateSnippetUseCase(
     private val snippetRepository: SnippetRepository,
     private val contentStorage: SnippetContentStorage,
 ) : UpdateSnippet {
-    override fun execute(
-        id: UUID,
-        request: UpdateSnippetRequest,
-    ): Snippet? {
+    override fun execute(command: UpdateSnippetCommand): Snippet? {
+        val id = command.id
         val existingSnippet = snippetQueryRepository.findById(id) ?: return null
 
         val newVersionId = UUID.randomUUID()
@@ -31,23 +28,23 @@ class UpdateSnippetUseCase(
                 id = newVersionId,
                 snippetId = id,
                 versionNumber = newVersionNumber,
-                originalContent = request.content,
+                originalContent = command.content,
                 formattedContent = null,
                 createdAt = Instant.now(),
             )
 
         val updatedSnippet =
             existingSnippet.copy(
-                name = request.name,
-                description = request.description,
-                language = request.language,
-                languageVersion = request.languageVersion,
+                name = command.name,
+                description = command.description,
+                language = command.language,
+                languageVersion = command.languageVersion,
                 currentVersion = newVersion,
             )
 
         val contentKey = "snippets/$id/versions/$newVersionId/original"
 
-        contentStorage.store(contentKey, request.content)
+        contentStorage.store(contentKey, command.content)
 
         return try {
             snippetRepository.update(

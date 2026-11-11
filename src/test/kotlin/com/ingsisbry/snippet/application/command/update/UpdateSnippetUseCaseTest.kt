@@ -1,6 +1,5 @@
 package com.ingsisbry.snippet.application.command.update
 
-import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -62,14 +61,7 @@ class UpdateSnippetUseCaseTest {
                 createdAt = oldCreatedAt,
             )
 
-        val request =
-            UpdateSnippetRequest(
-                name = "Updated name",
-                description = "Updated description",
-                language = "Java",
-                languageVersion = "21",
-                content = "System.out.println(\"Updated\");",
-            )
+        val command = updateCommand(snippetId)
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
@@ -85,20 +77,20 @@ class UpdateSnippetUseCaseTest {
                 invocation.getArgument<Snippet>(0)
             }
 
-        val result = useCase.execute(snippetId, request)
+        val result = useCase.execute(command)
 
         assertNotNull(result)
         result!!
 
         assertEquals(snippetId, result.id)
-        assertEquals(request.name, result.name)
-        assertEquals(request.description, result.description)
-        assertEquals(request.language, result.language)
-        assertEquals(request.languageVersion, result.languageVersion)
+        assertEquals(command.name, result.name)
+        assertEquals(command.description, result.description)
+        assertEquals(command.language, result.language)
+        assertEquals(command.languageVersion, result.languageVersion)
 
         assertEquals(2, result.currentVersion.versionNumber)
         assertEquals(snippetId, result.currentVersion.snippetId)
-        assertEquals(request.content, result.currentVersion.originalContent)
+        assertEquals(command.content, result.currentVersion.originalContent)
         assertNull(result.currentVersion.formattedContent)
 
         // The update must create a new version rather than reuse the old one.
@@ -108,7 +100,7 @@ class UpdateSnippetUseCaseTest {
 
         Mockito.verify(contentStorage).store(
             captureString(keyCaptor),
-            eqString(request.content),
+            eqString(command.content),
         )
 
         assertEquals(
@@ -123,20 +115,13 @@ class UpdateSnippetUseCaseTest {
     fun `execute should return null when snippet does not exist`() {
         val snippetId = UUID.randomUUID()
 
-        val request =
-            UpdateSnippetRequest(
-                name = "Updated name",
-                description = "Updated description",
-                language = "Java",
-                languageVersion = "21",
-                content = "System.out.println(\"Updated\");",
-            )
+        val command = updateCommand(snippetId)
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
             .thenReturn(null)
 
-        val result = useCase.execute(snippetId, request)
+        val result = useCase.execute(command)
 
         assertNull(result)
 
@@ -160,14 +145,7 @@ class UpdateSnippetUseCaseTest {
                 createdAt = Instant.parse("2026-10-26T12:00:00Z"),
             )
 
-        val request =
-            UpdateSnippetRequest(
-                name = "Updated name",
-                description = "Updated description",
-                language = "Java",
-                languageVersion = "21",
-                content = "System.out.println(\"Updated\");",
-            )
+        val command = updateCommand(snippetId)
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
@@ -183,18 +161,28 @@ class UpdateSnippetUseCaseTest {
                 DataIntegrityViolationException("Database constraint violation"),
             )
         assertThrows(DataIntegrityViolationException::class.java) {
-            useCase.execute(snippetId, request)
+            useCase.execute(command)
         }
 
         val keyCaptor = ArgumentCaptor.forClass(String::class.java)
 
         Mockito.verify(contentStorage).store(
             captureString(keyCaptor),
-            eqString(request.content),
+            eqString(command.content),
         )
 
         Mockito.verify(contentStorage).delete(keyCaptor.value)
     }
+
+    private fun updateCommand(snippetId: UUID) =
+        UpdateSnippetCommand(
+            id = snippetId,
+            name = "Updated name",
+            description = "Updated description",
+            language = "Java",
+            languageVersion = "21",
+            content = "System.out.println(\"Updated\");",
+        )
 
     private fun anySnippet(): Snippet =
         Mockito.any(Snippet::class.java)

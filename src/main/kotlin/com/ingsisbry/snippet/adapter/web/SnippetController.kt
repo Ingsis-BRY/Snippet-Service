@@ -12,6 +12,7 @@ import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetCommand
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
@@ -93,8 +94,14 @@ class SnippetController(
     ): UpdateSnippetResponse {
         val updatedSnippet =
             updateSnippet.execute(
-                id = snippetId,
-                request = request,
+                UpdateSnippetCommand(
+                    id = snippetId,
+                    name = request.name,
+                    description = request.description,
+                    language = request.language,
+                    languageVersion = request.languageVersion,
+                    content = request.content,
+                ),
             ) ?: throw ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "Snippet not found",

@@ -7,6 +7,7 @@ import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetCommand
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.list.ListSnippets
@@ -104,6 +105,16 @@ class UpdateSnippetEndpointTest {
                 content = "println(2)",
             )
 
+        val command =
+            UpdateSnippetCommand(
+                id = snippet.id,
+                name = request.name,
+                description = request.description,
+                language = request.language,
+                languageVersion = request.languageVersion,
+                content = request.content,
+            )
+
         val updatedSnippet =
             snippet.copy(
                 name = request.name,
@@ -114,14 +125,14 @@ class UpdateSnippetEndpointTest {
 
         Mockito
             .`when`(
-                updateSnippet.execute(snippet.id, request),
+                updateSnippet.execute(command),
             ).thenReturn(updatedSnippet)
 
         val response = controller.update(snippet.id, request)
 
         assertEquals(UpdateSnippetResponse.from(updatedSnippet), response)
 
-        Mockito.verify(updateSnippet).execute(snippet.id, request)
+        Mockito.verify(updateSnippet).execute(command)
     }
 
     @Test
@@ -137,9 +148,19 @@ class UpdateSnippetEndpointTest {
                 content = "println(1)",
             )
 
+        val command =
+            UpdateSnippetCommand(
+                id = snippetId,
+                name = request.name,
+                description = request.description,
+                language = request.language,
+                languageVersion = request.languageVersion,
+                content = request.content,
+            )
+
         Mockito
             .`when`(
-                updateSnippet.execute(snippetId, request),
+                updateSnippet.execute(command),
             ).thenReturn(null)
 
         val exception =
@@ -149,6 +170,6 @@ class UpdateSnippetEndpointTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.statusCode)
 
-        Mockito.verify(updateSnippet).execute(snippetId, request)
+        Mockito.verify(updateSnippet).execute(command)
     }
 }
