@@ -11,23 +11,19 @@ import org.springframework.stereotype.Component
 class ValidityFilter : SnippetFilter {
     override val parameterName = "valid"
 
+    override fun validate(value: String): String? =
+        if (value.toBooleanStrictOrNull() == null) "The valid filter must be either true or false" else null
+
     override fun toPredicate(
         value: String,
         root: Root<SnippetEntity>,
         criteriaBuilder: CriteriaBuilder,
-    ): Predicate? {
-        val valid =
-            value.toBooleanStrictOrNull()
-                ?: throw IllegalArgumentException(
-                    "The valid filter must be either true or false",
-                )
-
-        return if (valid) {
+    ): Predicate? =
+        if (value.toBooleanStrict()) {
             null
         } else {
             // represents a never met condition.
             // when the user asks for valid=false, the query returns zero results
             criteriaBuilder.disjunction()
         }
-    }
 }

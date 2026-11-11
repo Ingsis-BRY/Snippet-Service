@@ -3,6 +3,7 @@ package com.ingsisbry.snippet.application.query.list
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.port.out.query.SnippetFilterValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -18,11 +19,26 @@ class ListSnippetsUseCaseTest {
     @Mock
     private lateinit var snippetQueryRepository: SnippetQueryRepository
 
+    @Mock
+    private lateinit var filterValidator: SnippetFilterValidator
+
     private lateinit var useCase: ListSnippetsUseCase
 
     @BeforeEach
     fun setUp() {
-        useCase = ListSnippetsUseCase(snippetQueryRepository)
+        useCase = ListSnippetsUseCase(snippetQueryRepository, filterValidator)
+        Mockito.lenient().`when`(filterValidator.validate(Mockito.anyMap())).thenReturn(Result.Success(Unit))
+    }
+
+    @Test
+    fun `execute should fail without querying when filters are invalid`() {
+        val query = ListSnippetsQuery(user = "test-user", filters = mapOf("foo" to "bar"))
+        val failure = Result.Failure(InvalidInput("Unknown filter 'foo'"))
+
+        Mockito.`when`(filterValidator.validate(query.filters)).thenReturn(failure)
+
+        assertEquals(failure, useCase.execute(query))
+        Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
