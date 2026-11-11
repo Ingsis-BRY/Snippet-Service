@@ -10,6 +10,7 @@ import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
@@ -18,6 +19,7 @@ class UpdateSnippetUseCase(
     private val snippetQueryRepository: SnippetQueryRepository,
     private val snippetRepository: SnippetRepository,
     private val contentStorage: SnippetContentStorage,
+    private val clock: Clock,
 ) : UpdateSnippet {
     override fun execute(command: UpdateSnippetCommand): Result<SnippetError, Snippet> =
 
@@ -56,7 +58,7 @@ class UpdateSnippetUseCase(
                     versionNumber = existing.currentVersionNumber + 1,
                     originalContent = command.content,
                     formattedContent = null,
-                    createdAt = Instant.now(),
+                    createdAt = Instant.now(clock),
                 ),
         )
 }

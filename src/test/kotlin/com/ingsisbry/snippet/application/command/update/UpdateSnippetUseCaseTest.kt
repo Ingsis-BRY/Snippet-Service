@@ -3,6 +3,7 @@ package com.ingsisbry.snippet.application.command.update
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
+import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
@@ -19,7 +20,9 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Mock
 import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 @ExtendWith(MockitoExtension::class)
@@ -42,6 +45,7 @@ class UpdateSnippetUseCaseTest {
                 snippetQueryRepository = snippetQueryRepository,
                 snippetRepository = snippetRepository,
                 contentStorage = contentStorage,
+                clock = Clock.fixed(NOW, ZoneOffset.UTC),
             )
     }
 
@@ -75,6 +79,7 @@ class UpdateSnippetUseCaseTest {
         assertEquals("test-user", snippet.owner)
 
         assertEquals(2, snippet.currentVersion.versionNumber)
+        assertEquals(NOW, snippet.currentVersion.createdAt)
         assertEquals(snippetId, snippet.currentVersion.snippetId)
         assertEquals(command.content, snippet.currentVersion.originalContent)
         assertNull(snippet.currentVersion.formattedContent)
@@ -165,6 +170,29 @@ class UpdateSnippetUseCaseTest {
         Mockito.verify(contentStorage, Mockito.never()).delete(Mockito.anyString())
     }
 
+    @Test
+    fun `execute should fail with conflict and delete content when a concurrent update took the version`() {
+        val snippetId = UUID.randomUUID()
+        val failure = Result.Failure(SnippetConflict(snippetId))
+
+        Mockito
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(Result.Success(metadata(snippetId, versionNumber = 1)))
+        Mockito
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+        Mockito
+            .`when`(snippetRepository.update(anySnippet(), Mockito.anyString()))
+            .thenReturn(failure)
+        Mockito
+            .`when`(contentStorage.delete(Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+
+        assertEquals(failure, useCase.execute(updateCommand(snippetId)))
+
+        Mockito.verify(contentStorage).delete(Mockito.anyString())
+    }
+
     private fun metadata(
         snippetId: UUID,
         versionNumber: Int,
@@ -205,4 +233,8 @@ class UpdateSnippetUseCaseTest {
     private fun eqString(value: String): String = Mockito.eq(value) ?: value
 
     private fun captureString(captor: ArgumentCaptor<String>): String = captor.capture() ?: ""
+
+    private companion object {
+        val NOW: Instant = Instant.parse("2026-11-11T10:00:00Z")
+    }
 }
