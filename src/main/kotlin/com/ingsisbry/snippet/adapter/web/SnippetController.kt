@@ -2,6 +2,7 @@ package com.ingsisbry.snippet.adapter.web
 
 import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
 import com.ingsisbry.snippet.adapter.web.dto.request.CreateSnippetRequest
+import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetContentRequest
 import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.response.CreateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
@@ -14,6 +15,8 @@ import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippetCommand
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetContent
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetContentCommand
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
@@ -24,6 +27,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -39,6 +43,7 @@ class SnippetController(
     private val createSnippet: CreateSnippet,
     private val getSnippet: GetSnippet,
     private val updateSnippet: UpdateSnippet,
+    private val updateSnippetContent: UpdateSnippetContent,
     private val deleteSnippet: DeleteSnippet,
     private val listSnippets: ListSnippets,
     private val queryFactory: ListSnippetsQueryFactory,
@@ -101,6 +106,15 @@ class SnippetController(
                     content = request.content,
                 ),
             ).respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
+
+    @PatchMapping("/{snippetId}")
+    fun updateContent(
+        @PathVariable snippetId: UUID,
+        @RequestBody request: UpdateSnippetContentRequest,
+    ): ResponseEntity<*> =
+        updateSnippetContent
+            .execute(UpdateSnippetContentCommand(id = snippetId, content = request.content))
+            .respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
     @DeleteMapping("/{snippetId}")
     fun delete(

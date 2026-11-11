@@ -6,6 +6,7 @@ import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetContent
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
@@ -56,6 +57,7 @@ class DeleteSnippetEndpointTest {
                 createSnippet = createSnippet,
                 getSnippet = getSnippet,
                 updateSnippet = updateSnippet,
+                updateSnippetContent = Mockito.mock(UpdateSnippetContent::class.java),
                 deleteSnippet = deleteSnippet,
                 listSnippets = listSnippets,
                 queryFactory = queryFactory,

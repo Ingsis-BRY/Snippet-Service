@@ -57,6 +57,7 @@ Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *
 | `GET` | `/snippets` | Paginated list. Params: `page`, `size` (1-100), `sortBy` (`name`, `language`, `valid`), `direction`, `relationship`, plus the filters `name`, `language`, `valid`. |
 | `GET` | `/snippets/{id}` | Snippet with its current version's content. |
 | `PUT` | `/snippets/{id}` | Replace name/description/language/content; creates a new version. |
+| `PATCH` | `/snippets/{id}` | Replace only the content (body `{"content": ...}`); creates a new version, other fields are kept. |
 | `DELETE` | `/snippets/{id}` | Delete the snippet, all versions and their blobs. |
 | `GET` | `/snippets/{id}/download?version=original\|formatted` | Content as a `text/plain` attachment. |
 

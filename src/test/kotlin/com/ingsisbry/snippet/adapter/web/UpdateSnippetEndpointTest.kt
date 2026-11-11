@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.web
 
+import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetContentRequest
 import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
@@ -9,6 +10,8 @@ import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippetCommand
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetContent
+import com.ingsisbry.snippet.application.command.update.UpdateSnippetContentCommand
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
@@ -47,6 +50,9 @@ class UpdateSnippetEndpointTest {
     private lateinit var updateSnippet: UpdateSnippet
 
     @Mock
+    private lateinit var updateSnippetContent: UpdateSnippetContent
+
+    @Mock
     private lateinit var deleteSnippet: DeleteSnippet
 
     @Mock
@@ -62,6 +68,7 @@ class UpdateSnippetEndpointTest {
                 createSnippet = createSnippet,
                 getSnippet = getSnippet,
                 updateSnippet = updateSnippet,
+                updateSnippetContent = updateSnippetContent,
                 deleteSnippet = deleteSnippet,
                 listSnippets = listSnippets,
                 queryFactory = queryFactory,
@@ -154,5 +161,33 @@ class UpdateSnippetEndpointTest {
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
 
         Mockito.verify(updateSnippet).execute(command)
+    }
+
+    @Test
+    fun `patch returns 200 with the snippet updated by content only`() {
+        val snippet = createTestSnippet()
+        val command = UpdateSnippetContentCommand(snippet.id, "println(3)")
+
+        Mockito
+            .`when`(updateSnippetContent.execute(command))
+            .thenReturn(Result.Success(snippet))
+
+        val response = controller.updateContent(snippet.id, UpdateSnippetContentRequest("println(3)"))
+
+        assertEquals(HttpStatus.OK, response.statusCode)
+        assertEquals(UpdateSnippetResponse.from(snippet), response.body)
+    }
+
+    @Test
+    fun `patch maps a missing snippet to 404`() {
+        val id = UUID.randomUUID()
+        val command = UpdateSnippetContentCommand(id, "x")
+        Mockito
+            .`when`(updateSnippetContent.execute(command))
+            .thenReturn(Result.Failure(SnippetNotFound(id)))
+
+        val response = controller.updateContent(id, UpdateSnippetContentRequest("x"))
+
+        assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }
 }

@@ -37,7 +37,7 @@ class SnippetRulesTest {
         assertEquals("name must be at most 255 characters", violation(name = tooLong))
         assertEquals("description must be at most 255 characters", violation(description = tooLong))
         assertEquals(
-            "content must be at most 1000000 characters",
+            "content must be at most 10000 characters",
             violation(content = "a".repeat(SnippetRules.MAX_CONTENT_LENGTH + 1)),
         )
     }

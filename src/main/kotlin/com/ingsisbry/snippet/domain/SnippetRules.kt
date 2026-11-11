@@ -28,6 +28,8 @@ object SnippetRules {
         value: String,
     ): String? = if (value.length > MAX_TEXT_LENGTH) "$field must be at most $MAX_TEXT_LENGTH characters" else null
 
+    fun contentViolation(content: String): String? = contentTooLong(content)
+
     private fun contentTooLong(content: String): String? =
         if (content.length > MAX_CONTENT_LENGTH) "content must be at most $MAX_CONTENT_LENGTH characters" else null
 }
