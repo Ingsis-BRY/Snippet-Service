@@ -69,8 +69,6 @@ class JpaSnippetQueryRepositoryAdapter(
         )
     }
 
-    // Deliberately NOT @Transactional: the two lookups are simple reads, and the blob downloads below must
-    // not run while a database connection is checked out of the pool.
     override fun findById(id: UUID): Result<SnippetError, Snippet> =
         loadRecords(id).flatMap { (entity, version) ->
             contentStorage.retrieve(version.originalContentKey).flatMap { originalContent ->
@@ -95,6 +93,10 @@ class JpaSnippetQueryRepositoryAdapter(
                 }
             }
         }
+
+    override fun findReferencedContentKeys(keys: Collection<String>): Set<String> =
+        versionRepository.findAllByOriginalContentKeyIn(keys).map { it.originalContentKey }.toSet() +
+            versionRepository.findAllByFormattedContentKeyIn(keys).mapNotNull { it.formattedContentKey }
 
     override fun findMetadataById(id: UUID): Result<SnippetError, SnippetMetadata> =
         loadRecords(id).map { (entity, version) ->

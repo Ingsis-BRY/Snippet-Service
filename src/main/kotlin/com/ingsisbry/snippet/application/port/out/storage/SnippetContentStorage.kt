@@ -12,4 +12,6 @@ interface SnippetContentStorage {
     fun retrieve(key: String): Result<SnippetError, String>
 
     fun delete(key: String): Result<SnippetError, Unit>
+
+    fun listAll(): Result<SnippetError, List<StoredContent>>
 }

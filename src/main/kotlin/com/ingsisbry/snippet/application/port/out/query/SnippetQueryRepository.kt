@@ -16,4 +16,7 @@ interface SnippetQueryRepository {
 
     /** Loads only what the database knows; never touches the content store. */
     fun findMetadataById(id: UUID): Result<SnippetError, SnippetMetadata>
+
+    /** Returns the subset of [keys] that some snippet version still references. */
+    fun findReferencedContentKeys(keys: Collection<String>): Set<String>
 }

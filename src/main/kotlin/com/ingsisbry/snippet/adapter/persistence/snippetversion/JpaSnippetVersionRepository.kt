@@ -5,4 +5,8 @@ import java.util.UUID
 
 interface JpaSnippetVersionRepository : JpaRepository<SnippetVersionEntity, UUID> {
     fun findAllBySnippetId(snippetId: UUID): List<SnippetVersionEntity>
+
+    fun findAllByOriginalContentKeyIn(keys: Collection<String>): List<SnippetVersionEntity>
+
+    fun findAllByFormattedContentKeyIn(keys: Collection<String>): List<SnippetVersionEntity>
 }

@@ -8,6 +8,7 @@ import com.ingsisbry.snippet.application.error.ContentMissing
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
+import com.ingsisbry.snippet.application.port.out.storage.StoredContent
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
@@ -55,6 +56,15 @@ class AzureBlobSnippetContentStorage(
         guarded(key) {
             containerClient.getBlobClient(key).deleteIfExists()
             Result.Success(Unit)
+        }
+
+    override fun listAll(): Result<SnippetError, List<StoredContent>> =
+        guarded(CONTAINER_NAME) {
+            Result.Success(
+                containerClient.listBlobs().mapNotNull { blob ->
+                    blob.properties?.lastModified?.let { StoredContent(blob.name, it.toInstant()) }
+                },
+            )
         }
 
     /** Translates any Azure SDK failure (HTTP error, timeout, I/O) into a domain error. */
