@@ -3,11 +3,14 @@ package com.ingsisbry.snippet.adapter.web.mapper
 import com.ingsisbry.snippet.application.error.ContentMissing
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.InvalidSnippetContent
+import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -25,6 +28,9 @@ class SnippetErrorMapperTest {
                 SnippetNotFound(id) to HttpStatus.NOT_FOUND,
                 SnippetConflict(id) to HttpStatus.CONFLICT,
                 InvalidInput("bad") to HttpStatus.BAD_REQUEST,
+                InvalidSnippetContent("no-unused-vars", 3, 7) to HttpStatus.BAD_REQUEST,
+                UnsupportedLanguage("Python", "3") to HttpStatus.BAD_REQUEST,
+                LanguageServiceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
                 ContentStoreUnavailable("key", "down") to HttpStatus.SERVICE_UNAVAILABLE,
                 PersistenceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
                 ContentMissing("key") to HttpStatus.INTERNAL_SERVER_ERROR,

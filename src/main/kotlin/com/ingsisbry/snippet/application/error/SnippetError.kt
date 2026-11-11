@@ -38,3 +38,21 @@ data class SnippetCorrupted(
 data class InvalidInput(
     val reason: String,
 ) : SnippetError
+
+/** The language, or that version of it, is not supported by the language service. */
+data class UnsupportedLanguage(
+    val language: String,
+    val languageVersion: String,
+) : SnippetError
+
+/** The snippet content breaks a language rule at the given position. */
+data class InvalidSnippetContent(
+    val rule: String,
+    val line: Int,
+    val column: Int,
+) : SnippetError
+
+/** The language service could not complete the operation. */
+data class LanguageServiceUnavailable(
+    val reason: String?,
+) : SnippetError

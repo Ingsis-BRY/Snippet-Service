@@ -5,6 +5,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -20,6 +21,7 @@ class UpdateSnippetContentUseCase(
     private val snippetQueryRepository: SnippetQueryRepository,
     private val snippetRepository: SnippetRepository,
     private val contentStorage: SnippetContentStorage,
+    private val contentValidator: SnippetContentValidator,
     private val clock: Clock,
 ) : UpdateSnippetContent {
     override fun execute(command: UpdateSnippetContentCommand): Result<SnippetError, Snippet> {
@@ -28,7 +30,13 @@ class UpdateSnippetContentUseCase(
         return if (violation != null) {
             Result.Failure(InvalidInput(violation))
         } else {
-            snippetQueryRepository.findMetadataById(command.id).flatMap { existing -> store(command, existing) }
+            snippetQueryRepository
+                .findMetadataById(command.id)
+                .flatMap { existing ->
+                    contentValidator
+                        .validate(existing.language, existing.languageVersion, command.content)
+                        .flatMap { store(command, existing) }
+                }
         }
     }
 

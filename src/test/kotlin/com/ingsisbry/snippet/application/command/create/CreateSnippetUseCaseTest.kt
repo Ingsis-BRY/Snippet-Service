@@ -3,9 +3,14 @@ package com.ingsisbry.snippet.application.command.create
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
+import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
+import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -33,6 +38,9 @@ class CreateSnippetUseCaseTest {
 
     private lateinit var useCase: CreateSnippetUseCase
 
+    private var languageCheck: Result<SnippetError, Unit> = Result.Success(Unit)
+    private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
+
     private val createdAt = Instant.parse("2026-10-27T12:00:00Z")
 
     @BeforeEach
@@ -43,8 +51,36 @@ class CreateSnippetUseCaseTest {
             CreateSnippetUseCase(
                 snippetRepository = snippetRepository,
                 contentStorage = contentStorage,
+                supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
+                contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
                 clock = clock,
             )
+    }
+
+    @Test
+    fun `execute should reject an unsupported language without touching storage or database`() {
+        // given
+        languageCheck = Result.Failure(UnsupportedLanguage("Python", "3"))
+
+        // when
+        val result = useCase.execute(command)
+
+        // then
+        assertEquals(Result.Failure(UnsupportedLanguage("Python", "3")), result)
+        Mockito.verifyNoInteractions(snippetRepository, contentStorage)
+    }
+
+    @Test
+    fun `execute should reject content that breaks a language rule without touching storage or database`() {
+        // given
+        contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
+
+        // when
+        val result = useCase.execute(command)
+
+        // then
+        assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
+        Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 
     @Test

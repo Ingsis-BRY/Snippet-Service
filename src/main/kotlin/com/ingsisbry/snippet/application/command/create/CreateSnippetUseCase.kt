@@ -5,6 +5,8 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
+import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetRules
@@ -17,6 +19,8 @@ import java.util.UUID
 class CreateSnippetUseCase(
     private val snippetRepository: SnippetRepository,
     private val contentStorage: SnippetContentStorage,
+    private val supportedLanguages: SupportedLanguages,
+    private val contentValidator: SnippetContentValidator,
     private val clock: Clock,
 ) : CreateSnippet {
     override fun execute(command: CreateSnippetCommand): Result<SnippetError, Snippet> {
@@ -33,6 +37,13 @@ class CreateSnippetUseCase(
             return Result.Failure(InvalidInput(violation))
         }
 
+        return supportedLanguages
+            .check(command.language, command.languageVersion)
+            .flatMap { contentValidator.validate(command.language, command.languageVersion, command.content) }
+            .flatMap { store(command) }
+    }
+
+    private fun store(command: CreateSnippetCommand): Result<SnippetError, Snippet> {
         val snippetId = UUID.randomUUID()
         val versionId = UUID.randomUUID()
 

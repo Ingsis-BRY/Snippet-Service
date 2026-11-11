@@ -3,10 +3,15 @@ package com.ingsisbry.snippet.application.command.update
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
+import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -39,6 +44,9 @@ class UpdateSnippetUseCaseTest {
 
     private lateinit var useCase: UpdateSnippetUseCase
 
+    private var languageCheck: Result<SnippetError, Unit> = Result.Success(Unit)
+    private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
+
     @BeforeEach
     fun setUp() {
         useCase =
@@ -46,8 +54,36 @@ class UpdateSnippetUseCaseTest {
                 snippetQueryRepository = snippetQueryRepository,
                 snippetRepository = snippetRepository,
                 contentStorage = contentStorage,
+                supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
+                contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
                 clock = Clock.fixed(NOW, ZoneOffset.UTC),
             )
+    }
+
+    @Test
+    fun `execute should reject an unsupported language without touching storage or database`() {
+        // given
+        languageCheck = Result.Failure(UnsupportedLanguage("Python", "3"))
+
+        // when
+        val result = useCase.execute(updateCommand(UUID.randomUUID()))
+
+        // then
+        assertEquals(Result.Failure(UnsupportedLanguage("Python", "3")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
+    }
+
+    @Test
+    fun `execute should reject content that breaks a language rule without touching storage or database`() {
+        // given
+        contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
+
+        // when
+        val result = useCase.execute(updateCommand(UUID.randomUUID()))
+
+        // then
+        assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
     }
 
     @Test

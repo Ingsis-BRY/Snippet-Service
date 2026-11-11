@@ -17,7 +17,8 @@ A Kotlin / Spring Boot service that manages code snippets.
   - [9. Error handling](#9-error-handling)
   - [10. Filters as a plugin architecture](#10-filters-as-a-plugin-architecture)
   - [11. Validation lives in the domain](#11-validation-lives-in-the-domain)
-  - [12. Smaller decisions](#12-smaller-decisions)
+  - [12. Language rules live behind ports](#12-language-rules-live-behind-ports)
+  - [13. Smaller decisions](#13-smaller-decisions)
 - [Known limitations](#known-limitations)
 - [Testing](#testing)
 
@@ -79,13 +80,15 @@ com.ingsisbry.snippet
 │   ├── command/                create, update, delete, cleanup         (write side use cases)
 │   ├── query/                  get, list, download                     (read side use cases)
 │   ├── port/out/               SnippetRepository, SnippetQueryRepository,
-│   │                           SnippetContentStorage, SnippetFilterValidator
+│   │                           SnippetContentStorage, SnippetFilterValidator,
+│   │                           SupportedLanguages, SnippetContentValidator
 │   ├── error/                  sealed SnippetError
 │   └── common/                 Result, PageResult
 └── adapter/
     ├── web/                    controller, DTOs, error → HTTP mapping
     ├── persistence/            JPA entities, repositories, filters, specifications
     ├── storage/azure/          blob storage adapter
+    ├── language/               placeholder language service adapter
     ├── scheduling/             orphan cleanup job
     └── configuration/          Clock bean, scheduling
 ```
@@ -194,7 +197,8 @@ infrastructure. We have no workload that justifies that.
 of throwing. `SnippetError` is a sealed hierarchy:
 
 `SnippetNotFound`, `SnippetConflict`, `InvalidInput`, `ContentMissing`, `SnippetCorrupted`,
-`ContentStoreUnavailable`, `PersistenceUnavailable`.
+`ContentStoreUnavailable`, `PersistenceUnavailable`, `UnsupportedLanguage`, `InvalidSnippetContent`,
+`LanguageServiceUnavailable`.
 
 **Why.**
 - **The commit that introduced it explains the trigger:** use cases were throwing Spring/JPA exceptions or
@@ -376,10 +380,13 @@ Errors are values (section 4) and flow outward through three stages:
 | Error | Status | Meaning |
 | --- | --- | --- |
 | `InvalidInput` | 400 | Bad request data, bad filter, bad parameter |
+| `UnsupportedLanguage` | 400 | The language or its version isn't supported |
+| `InvalidSnippetContent` | 400 | Content breaks a language rule; the message includes rule, line and column |
 | `SnippetNotFound` | 404 | No such snippet |
 | `SnippetConflict` | 409 | Constraint violation, e.g. a concurrent update |
 | `ContentStoreUnavailable` | 503 | Blob storage failed or timed out |
 | `PersistenceUnavailable` | 503 | Database failed |
+| `LanguageServiceUnavailable` | 503 | The language service failed or timed out |
 | `ContentMissing` | 500 | A row references a blob that doesn't exist (our bug / data loss) |
 | `SnippetCorrupted` | 500 | Row points at a missing version (inconsistent data) |
 
@@ -451,7 +458,47 @@ content is at most 1,000,000 characters.
 - The 10000-character limit is a chosen default, not a derived requirement. It counts characters, not bytes. 
 - Rules are checked by the use cases rather than being unrepresentable in the types.
 
-### 12. Smaller decisions
+### 12. Language rules live behind ports
+
+**Decision.** Two outbound ports, both `fun interface`s returning `Result<SnippetError, Unit>`:
+
+| Port | Question it answers | Failure |
+| --- | --- | --- |
+| `SupportedLanguages.check(language, languageVersion)` | Can snippets use this language and version? | `UnsupportedLanguage`, `LanguageServiceUnavailable` |
+| `SnippetContentValidator.validate(language, languageVersion, content)` | Does the content respect the language's rules? | `InvalidSnippetContent(rule, line, column)`, `LanguageServiceUnavailable` |
+
+- Create, update and content-only update call them before touching blob storage or the database. 
+- Content-only update has no language in the request, so it validates against the snippet's stored language and version.
+
+**Why.**
+- **The assignment requires it.** 
+  - User stories #1 to #4 say an invalid snippet must be rejected, with the
+    broken rule and its line and column. 
+  - The consigna also says PrintScript is only the first language.
+- **The knowledge isn't in this service.** 
+  - Parsing and language rules will be owned by a separate language microservice that doesn't exist yet. 
+  - This service shouldn't embed a parser, and it shouldn't wait for one.
+- **A port makes that service easy to plug in.** 
+  - The use cases depend on the interface, so wiring in the real service means writing one adapter (an HTTP client). 
+  - The use cases and their tests don't change.
+- **One strategy per language lives on the other side.** 
+  - Picking a parser by language and version is the language service's job. 
+  - Language is just data passed through.
+- **Same style as the other ports:** 
+  - typed errors (including "the service is down", which maps to 503 instead of a misleading 400) 
+  - and checks that run before any side effect.
+
+**Today.** `PermissiveLanguageServiceAdapter` implements both ports and accepts everything. 
+- It is a placeholder, so the service behaves as it did before these ports existed.
+
+**Cost.**
+- Until the real adapter exists, no snippet is rejected for its language or content 
+- Once it exists, every create and update makes one or two network calls before saving, so latency and
+  availability depend on the language service. 
+- The 503 mapping makes that failure explicit.
+- Two ports means two calls. They could be merged if the service ends up exposing a single endpoint.
+
+### 13. Smaller decisions
 
 - **Immutable versions.** Editing never modifies a version; it creates a new one with a new blob. This is
   what makes blob keys safe and history trustworthy, at the price of storage growth (there is no version
@@ -476,6 +523,9 @@ We would rather list these than have them discovered:
 - **No authentication or authorization.** The owner is hard-coded (`Anonymous` on create, `anonymous` on
   list); anyone with a snippet id can read, change or delete it. `relationship=OWNED` behaves like `ALL`,
   and `SHARED` always returns an empty page.
+- **Language checks are a placeholder.** `PermissiveLanguageServiceAdapter` accepts every language and every
+  content, so unsupported languages and invalid snippets are not rejected yet. They will be once an adapter
+  for the language service replaces it.
 - **Formatting isn't implemented.** `formattedContent` is never written, and
   `download?version=formatted` currently returns the *original* content.
 - **`valid` is a stub.** Every snippet reports `valid = true`, `valid=false` returns nothing and

@@ -2,9 +2,12 @@ package com.ingsisbry.snippet.application.command.update
 
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -36,6 +39,8 @@ class UpdateSnippetContentUseCaseTest {
 
     private lateinit var useCase: UpdateSnippetContentUseCase
 
+    private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
+
     private val now = Instant.parse("2026-11-11T10:00:00Z")
 
     @BeforeEach
@@ -45,8 +50,26 @@ class UpdateSnippetContentUseCaseTest {
                 snippetQueryRepository,
                 snippetRepository,
                 contentStorage,
+                SnippetContentValidator { _, _, _ -> contentValidation },
                 Clock.fixed(now, ZoneOffset.UTC),
             )
+    }
+
+    @Test
+    fun `execute rejects content that breaks a language rule without touching storage or database`() {
+        // given
+        val id = UUID.randomUUID()
+        Mockito
+            .`when`(snippetQueryRepository.findMetadataById(id))
+            .thenReturn(Result.Success(metadata(id)))
+        contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
+
+        // when
+        val result = useCase.execute(UpdateSnippetContentCommand(id, "let x = 1;"))
+
+        // then
+        assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
+        Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 
     @Test
