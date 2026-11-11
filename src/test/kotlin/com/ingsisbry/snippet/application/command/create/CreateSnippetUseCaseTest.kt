@@ -2,6 +2,7 @@ package com.ingsisbry.snippet.application.command.create
 
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
+import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
@@ -44,6 +45,14 @@ class CreateSnippetUseCaseTest {
                 contentStorage = contentStorage,
                 clock = clock,
             )
+    }
+
+    @Test
+    fun `execute should reject invalid input without touching storage or database`() {
+        val result = useCase.execute(command.copy(language = ""))
+
+        assertEquals(Result.Failure(InvalidInput("language must not be blank")), result)
+        Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 
     private val command =

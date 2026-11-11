@@ -2,6 +2,7 @@ package com.ingsisbry.snippet.application.command.update
 
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
+import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetNotFound
@@ -191,6 +192,14 @@ class UpdateSnippetUseCaseTest {
         assertEquals(failure, useCase.execute(updateCommand(snippetId)))
 
         Mockito.verify(contentStorage).delete(Mockito.anyString())
+    }
+
+    @Test
+    fun `execute should reject invalid input without touching any dependency`() {
+        val result = useCase.execute(updateCommand(UUID.randomUUID()).copy(name = " "))
+
+        assertEquals(Result.Failure(InvalidInput("name must not be blank")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
     }
 
     private fun metadata(

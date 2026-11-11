@@ -12,6 +12,22 @@ data class SnippetVersion(
     val createdAt: Instant,
 ) {
     companion object {
+        fun after(
+            previousVersionNumber: Int,
+            id: UUID,
+            snippetId: UUID,
+            originalContent: String,
+            createdAt: Instant,
+        ): SnippetVersion =
+            SnippetVersion(
+                id = id,
+                snippetId = snippetId,
+                versionNumber = previousVersionNumber + 1,
+                originalContent = originalContent,
+                formattedContent = null,
+                createdAt = createdAt,
+            )
+
         fun first(
             id: UUID,
             snippetId: UUID,

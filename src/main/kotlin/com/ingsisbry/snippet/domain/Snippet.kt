@@ -13,6 +13,36 @@ data class Snippet(
     val currentVersion: SnippetVersion,
 ) {
     companion object {
+        @Suppress("LongParameterList")
+        fun update(
+            id: UUID,
+            owner: String,
+            previousVersionNumber: Int,
+            name: String,
+            description: String,
+            language: String,
+            languageVersion: String,
+            content: String,
+            versionId: UUID,
+            createdAt: Instant,
+        ): Snippet =
+            Snippet(
+                id = id,
+                name = name,
+                description = description,
+                language = language,
+                languageVersion = languageVersion,
+                owner = owner,
+                currentVersion =
+                    SnippetVersion.after(
+                        previousVersionNumber = previousVersionNumber,
+                        id = versionId,
+                        snippetId = id,
+                        originalContent = content,
+                        createdAt = createdAt,
+                    ),
+            )
+
         fun create(
             id: UUID,
             name: String,

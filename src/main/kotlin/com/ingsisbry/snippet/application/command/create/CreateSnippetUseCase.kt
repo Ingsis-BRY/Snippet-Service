@@ -2,10 +2,12 @@ package com.ingsisbry.snippet.application.command.create
 
 import com.ingsisbry.snippet.application.command.common.storeThenPersist
 import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.domain.SnippetRules
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -18,6 +20,19 @@ class CreateSnippetUseCase(
     private val clock: Clock,
 ) : CreateSnippet {
     override fun execute(command: CreateSnippetCommand): Result<SnippetError, Snippet> {
+        val violation =
+            SnippetRules.violation(
+                name = command.name,
+                description = command.description,
+                language = command.language,
+                languageVersion = command.languageVersion,
+                content = command.content,
+            )
+
+        if (violation != null) {
+            return Result.Failure(InvalidInput(violation))
+        }
+
         val snippetId = UUID.randomUUID()
         val versionId = UUID.randomUUID()
 

@@ -8,6 +8,21 @@ import java.util.UUID
 
 class SnippetVersionTest {
     @Test
+    fun `after should create the next version without formatted content`() {
+        val version =
+            SnippetVersion.after(
+                previousVersionNumber = 4,
+                id = UUID.randomUUID(),
+                snippetId = UUID.randomUUID(),
+                originalContent = "x",
+                createdAt = Instant.parse("2026-10-27T12:00:00Z"),
+            )
+
+        assertEquals(5, version.versionNumber)
+        assertNull(version.formattedContent)
+    }
+
+    @Test
     fun `first should create initial version with version number one`() {
         val id = UUID.randomUUID()
         val snippetId = UUID.randomUUID()

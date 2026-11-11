@@ -41,4 +41,33 @@ class SnippetTest {
         assertNull(snippet.currentVersion.formattedContent)
         assertEquals(createdAt, snippet.currentVersion.createdAt)
     }
+
+    @Test
+    fun `update should keep identity and owner and bump the version number`() {
+        val id = UUID.randomUUID()
+        val versionId = UUID.randomUUID()
+        val createdAt = Instant.parse("2026-10-27T12:00:00Z")
+
+        val snippet =
+            Snippet.update(
+                id = id,
+                owner = "owner",
+                previousVersionNumber = 2,
+                name = "n",
+                description = "d",
+                language = "l",
+                languageVersion = "v",
+                content = "c",
+                versionId = versionId,
+                createdAt = createdAt,
+            )
+
+        assertEquals(id, snippet.id)
+        assertEquals("owner", snippet.owner)
+        assertEquals(3, snippet.currentVersion.versionNumber)
+        assertEquals(versionId, snippet.currentVersion.id)
+        assertEquals(id, snippet.currentVersion.snippetId)
+        assertEquals("c", snippet.currentVersion.originalContent)
+        assertEquals(createdAt, snippet.currentVersion.createdAt)
+    }
 }
