@@ -1,10 +1,11 @@
 package com.ingsisbry.snippet.application.query.download
 
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -32,55 +33,40 @@ class DownloadSnippetUseCaseTest {
 
     @Test
     fun `execute should return original content when variant is ORIGINAL`() {
-        val snippet = createSnippet()
-
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(snippet)
+            .thenReturn(Result.Success(createSnippet()))
 
-        val result =
-            useCase.execute(
-                snippetId,
-                SnippetContentVariant.ORIGINAL,
-            )
+        val result = useCase.execute(snippetId, SnippetContentVariant.ORIGINAL)
 
-        assertEquals(originalContent, result)
+        assertEquals(Result.Success(originalContent), result)
         Mockito.verify(snippetQueryRepository).findById(snippetId)
     }
 
     @Test
     fun `execute should return content when variant is FORMATTED`() {
-        val snippet = createSnippet()
-
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(snippet)
+            .thenReturn(Result.Success(createSnippet()))
 
-        val result =
-            useCase.execute(
-                snippetId,
-                SnippetContentVariant.FORMATTED,
-            )
+        val result = useCase.execute(snippetId, SnippetContentVariant.FORMATTED)
 
-        // Actualmente, el caso de uso devuelve originalContent
-        // también para la variante FORMATTED.
-        assertEquals(originalContent, result)
+        // Currently the use case returns the original content for the FORMATTED variant too.
+        assertEquals(Result.Success(originalContent), result)
         Mockito.verify(snippetQueryRepository).findById(snippetId)
     }
 
     @Test
-    fun `execute should return null when snippet does not exist`() {
+    fun `execute should propagate the error when the snippet cannot be loaded`() {
+        val failure = Result.Failure(SnippetNotFound(snippetId))
+
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(null)
+            .thenReturn(failure)
 
-        val result =
-            useCase.execute(
-                snippetId,
-                SnippetContentVariant.ORIGINAL,
-            )
+        val result = useCase.execute(snippetId, SnippetContentVariant.ORIGINAL)
 
-        assertNull(result)
+        assertEquals(failure, result)
         Mockito.verify(snippetQueryRepository).findById(snippetId)
     }
 

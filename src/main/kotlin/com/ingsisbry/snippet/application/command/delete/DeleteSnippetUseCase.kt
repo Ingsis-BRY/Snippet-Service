@@ -1,5 +1,7 @@
 package com.ingsisbry.snippet.application.command.delete
 
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import org.slf4j.LoggerFactory
@@ -13,23 +15,13 @@ class DeleteSnippetUseCase(
 ) : DeleteSnippet {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    override fun execute(id: UUID): Boolean {
-        val contentKeys =
-            snippetRepository.deleteById(id)
-                ?: return false
-
-        contentKeys.forEach { key ->
-            runCatching {
-                contentStorage.delete(key)
-            }.onFailure { exception ->
-                logger.error(
-                    "Failed to delete snippet content blob: {}",
-                    key,
-                    exception,
-                )
+    override fun execute(id: UUID): Result<SnippetError, Unit> =
+        snippetRepository.deleteById(id).map { contentKeys ->
+            // The snippet is already gone from the database; a blob that cannot be deleted is only logged.
+            contentKeys.forEach { key ->
+                contentStorage.delete(key).onFailure { error ->
+                    logger.error("Failed to delete snippet content blob {}: {}", key, error)
+                }
             }
         }
-
-        return true
-    }
 }

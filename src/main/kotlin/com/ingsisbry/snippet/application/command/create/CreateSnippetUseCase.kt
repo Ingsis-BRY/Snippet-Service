@@ -1,9 +1,11 @@
 package com.ingsisbry.snippet.application.command.create
 
+import com.ingsisbry.snippet.application.command.common.storeThenPersist
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -15,7 +17,7 @@ class CreateSnippetUseCase(
     private val contentStorage: SnippetContentStorage,
     private val clock: Clock,
 ) : CreateSnippet {
-    override fun execute(command: CreateSnippetCommand): Snippet {
+    override fun execute(command: CreateSnippetCommand): Result<SnippetError, Snippet> {
         val snippetId = UUID.randomUUID()
         val versionId = UUID.randomUUID()
 
@@ -34,23 +36,14 @@ class CreateSnippetUseCase(
 
         val originalContentKey = "snippets/$snippetId/versions/$versionId/original"
 
-        contentStorage.store(
+        return contentStorage.storeThenPersist(
             key = originalContentKey,
             content = snippet.currentVersion.originalContent,
-        )
-
-        try {
-            return snippetRepository.save(
+        ) {
+            snippetRepository.save(
                 snippet = snippet,
                 originalContentKey = originalContentKey,
             )
-        } catch (exception: DataIntegrityViolationException) {
-            // cleanup if persistence of metadata in DB fails.
-            runCatching {
-                contentStorage.delete(originalContentKey)
-            }
-
-            throw exception
         }
     }
 }

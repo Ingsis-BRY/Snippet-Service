@@ -1,13 +1,17 @@
 package com.ingsisbry.snippet.application.command.update
 
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
+import com.ingsisbry.snippet.application.error.PersistenceUnavailable
+import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
+import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -15,7 +19,6 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Mock
 import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
-import org.springframework.dao.DataIntegrityViolationException
 import java.time.Instant
 import java.util.UUID
 
@@ -45,56 +48,36 @@ class UpdateSnippetUseCaseTest {
     @Test
     fun `execute should create a new version and update snippet`() {
         val snippetId = UUID.randomUUID()
-        val oldVersionId = UUID.randomUUID()
-        val oldCreatedAt = Instant.parse("2026-10-26T12:00:00Z")
-
-        val existingSnippet =
-            Snippet.create(
-                id = snippetId,
-                name = "Old name",
-                description = "Old description",
-                language = "Kotlin",
-                languageVersion = "2.2",
-                owner = "test-user",
-                content = "println(\"Old\")",
-                versionId = oldVersionId,
-                createdAt = oldCreatedAt,
-            )
-
         val command = updateCommand(snippetId)
 
         Mockito
-            .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(existingSnippet)
-
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(Result.Success(metadata(snippetId, versionNumber = 1)))
         Mockito
-            .`when`(
-                snippetRepository.update(
-                    anySnippet(),
-                    Mockito.anyString(),
-                ),
-            ).thenAnswer { invocation ->
-                invocation.getArgument<Snippet>(0)
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+        Mockito
+            .`when`(snippetRepository.update(anySnippet(), Mockito.anyString()))
+            .thenAnswer { invocation ->
+                Result.Success(invocation.getArgument<Snippet>(0))
             }
 
         val result = useCase.execute(command)
 
-        assertNotNull(result)
-        result!!
+        assertTrue(result is Result.Success)
+        val snippet = (result as Result.Success).value
 
-        assertEquals(snippetId, result.id)
-        assertEquals(command.name, result.name)
-        assertEquals(command.description, result.description)
-        assertEquals(command.language, result.language)
-        assertEquals(command.languageVersion, result.languageVersion)
+        assertEquals(snippetId, snippet.id)
+        assertEquals(command.name, snippet.name)
+        assertEquals(command.description, snippet.description)
+        assertEquals(command.language, snippet.language)
+        assertEquals(command.languageVersion, snippet.languageVersion)
+        assertEquals("test-user", snippet.owner)
 
-        assertEquals(2, result.currentVersion.versionNumber)
-        assertEquals(snippetId, result.currentVersion.snippetId)
-        assertEquals(command.content, result.currentVersion.originalContent)
-        assertNull(result.currentVersion.formattedContent)
-
-        // The update must create a new version rather than reuse the old one.
-        assertEquals(false, result.currentVersion.id == oldVersionId)
+        assertEquals(2, snippet.currentVersion.versionNumber)
+        assertEquals(snippetId, snippet.currentVersion.snippetId)
+        assertEquals(command.content, snippet.currentVersion.originalContent)
+        assertNull(snippet.currentVersion.formattedContent)
 
         val keyCaptor = ArgumentCaptor.forClass(String::class.java)
 
@@ -104,65 +87,54 @@ class UpdateSnippetUseCaseTest {
         )
 
         assertEquals(
-            "snippets/$snippetId/versions/${result.currentVersion.id}/original",
+            "snippets/$snippetId/versions/${snippet.currentVersion.id}/original",
             keyCaptor.value,
         )
 
-        Mockito.verify(snippetRepository).update(result, keyCaptor.value)
+        Mockito.verify(snippetRepository).update(snippet, keyCaptor.value)
+
+        Mockito.verify(snippetQueryRepository, Mockito.never()).findById(snippetId)
     }
 
     @Test
-    fun `execute should return null when snippet does not exist`() {
+    fun `execute should fail with not found when snippet does not exist`() {
         val snippetId = UUID.randomUUID()
-
-        val command = updateCommand(snippetId)
+        val failure = Result.Failure(SnippetNotFound(snippetId))
 
         Mockito
-            .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(null)
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(failure)
 
-        val result = useCase.execute(command)
+        val result = useCase.execute(updateCommand(snippetId))
 
-        assertNull(result)
+        assertEquals(failure, result)
 
-        Mockito.verify(snippetQueryRepository).findById(snippetId)
+        Mockito.verify(snippetQueryRepository).findMetadataById(snippetId)
         Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 
     @Test
-    fun `execute should delete stored content when repository update fails`() {
+    fun `execute should delete stored content when repository update fails for any reason`() {
         val snippetId = UUID.randomUUID()
-        val existingSnippet =
-            Snippet.create(
-                id = snippetId,
-                name = "Original name",
-                description = "Original description",
-                language = "Kotlin",
-                languageVersion = "2.2",
-                owner = "test-user",
-                content = "println(\"Original\")",
-                versionId = UUID.randomUUID(),
-                createdAt = Instant.parse("2026-10-26T12:00:00Z"),
-            )
-
         val command = updateCommand(snippetId)
+        val failure = Result.Failure(PersistenceUnavailable("db down"))
 
         Mockito
-            .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(existingSnippet)
-
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(Result.Success(metadata(snippetId, versionNumber = 1)))
         Mockito
-            .`when`(
-                snippetRepository.update(
-                    anySnippet(),
-                    Mockito.anyString(),
-                ),
-            ).thenThrow(
-                DataIntegrityViolationException("Database constraint violation"),
-            )
-        assertThrows(DataIntegrityViolationException::class.java) {
-            useCase.execute(command)
-        }
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+        Mockito
+            .`when`(snippetRepository.update(anySnippet(), Mockito.anyString()))
+            .thenReturn(failure)
+        Mockito
+            .`when`(contentStorage.delete(Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+
+        val result = useCase.execute(command)
+
+        assertEquals(failure, result)
 
         val keyCaptor = ArgumentCaptor.forClass(String::class.java)
 
@@ -170,9 +142,41 @@ class UpdateSnippetUseCaseTest {
             captureString(keyCaptor),
             eqString(command.content),
         )
-
         Mockito.verify(contentStorage).delete(keyCaptor.value)
     }
+
+    @Test
+    fun `execute should not touch the database when storing content fails`() {
+        val snippetId = UUID.randomUUID()
+        val failure = Result.Failure(ContentStoreUnavailable("key", "down"))
+
+        Mockito
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(Result.Success(metadata(snippetId, versionNumber = 1)))
+        Mockito
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(failure)
+
+        val result = useCase.execute(updateCommand(snippetId))
+
+        assertEquals(failure, result)
+
+        Mockito.verifyNoInteractions(snippetRepository)
+        Mockito.verify(contentStorage, Mockito.never()).delete(Mockito.anyString())
+    }
+
+    private fun metadata(
+        snippetId: UUID,
+        versionNumber: Int,
+    ) = SnippetMetadata(
+        id = snippetId,
+        name = "Old name",
+        description = "Old description",
+        language = "Kotlin",
+        languageVersion = "2.2",
+        owner = "test-user",
+        currentVersionNumber = versionNumber,
+    )
 
     private fun updateCommand(snippetId: UUID) =
         UpdateSnippetCommand(

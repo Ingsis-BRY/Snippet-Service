@@ -2,7 +2,13 @@ package com.ingsisbry.snippet.adapter.storage.azure
 
 import com.azure.core.util.BinaryData
 import com.azure.storage.blob.BlobServiceClient
+import com.azure.storage.blob.models.BlobStorageException
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.ContentMissing
+import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 @Component
@@ -11,7 +17,10 @@ class AzureBlobSnippetContentStorage(
 ) : SnippetContentStorage {
     companion object {
         private const val CONTAINER_NAME = "snippets"
+        private const val HTTP_NOT_FOUND = 404
     }
+
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     private val containerClient =
         blobServiceClient.getBlobContainerClient(CONTAINER_NAME)
@@ -23,24 +32,41 @@ class AzureBlobSnippetContentStorage(
     override fun store(
         key: String,
         content: String,
-    ) {
-        val blobClient = containerClient.getBlobClient(key)
+    ): Result<SnippetError, Unit> =
+        guarded(key) {
+            containerClient.getBlobClient(key).upload(BinaryData.fromString(content), true)
+            Result.Success(Unit)
+        }
 
-        blobClient.upload(
-            BinaryData.fromString(content),
-            true,
-        )
-    }
+    override fun retrieve(key: String): Result<SnippetError, String> =
+        guarded(key) {
+            try {
+                Result.Success(containerClient.getBlobClient(key).downloadContent().toString())
+            } catch (exception: BlobStorageException) {
+                if (exception.statusCode == HTTP_NOT_FOUND) {
+                    Result.Failure(ContentMissing(key))
+                } else {
+                    throw exception
+                }
+            }
+        }
 
-    override fun retrieve(key: String): String {
-        val blobClient = containerClient.getBlobClient(key)
+    override fun delete(key: String): Result<SnippetError, Unit> =
+        guarded(key) {
+            containerClient.getBlobClient(key).deleteIfExists()
+            Result.Success(Unit)
+        }
 
-        return blobClient.downloadContent().toString()
-    }
-
-    override fun delete(key: String) {
-        val blobClient = containerClient.getBlobClient(key)
-
-        blobClient.deleteIfExists()
-    }
+    /** Translates any Azure SDK failure (HTTP error, timeout, I/O) into a domain error. */
+    @Suppress("TooGenericExceptionCaught")
+    private fun <T> guarded(
+        key: String,
+        block: () -> Result<SnippetError, T>,
+    ): Result<SnippetError, T> =
+        try {
+            block()
+        } catch (exception: RuntimeException) {
+            logger.error("Blob storage operation failed for key {}", key, exception)
+            Result.Failure(ContentStoreUnavailable(key, exception.message))
+        }
 }

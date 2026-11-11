@@ -1,11 +1,11 @@
 package com.ingsisbry.snippet.application.query.get
 
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertSame
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -36,33 +36,27 @@ class GetSnippetUseCaseTest {
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(snippet)
+            .thenReturn(Result.Success(snippet))
 
         val result = useCase.execute(query)
 
-        assertSame(snippet, result)
-        assertEquals(snippetId, result.id)
+        assertEquals(Result.Success(snippet), result)
 
         Mockito.verify(snippetQueryRepository).findById(snippetId)
     }
 
     @Test
-    fun `execute should throw NoSuchElementException when snippet does not exist`() {
+    fun `execute should fail with not found when snippet does not exist`() {
         val query = GetSnippetQuery(snippetId)
+        val failure = Result.Failure(SnippetNotFound(snippetId))
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
-            .thenReturn(null)
+            .thenReturn(failure)
 
-        val exception =
-            assertThrows(NoSuchElementException::class.java) {
-                useCase.execute(query)
-            }
+        val result = useCase.execute(query)
 
-        assertEquals(
-            "Snippet $snippetId not found",
-            exception.message,
-        )
+        assertEquals(failure, result)
 
         Mockito.verify(snippetQueryRepository).findById(snippetId)
     }

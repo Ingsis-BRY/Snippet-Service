@@ -8,16 +8,18 @@ import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
+import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippetCommand
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
-import com.ingsisbry.snippet.application.query.list.SnippetListItem
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -28,9 +30,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
@@ -44,14 +44,14 @@ class SnippetController(
     private val queryFactory: ListSnippetsQueryFactory,
     private val downloadSnippet: DownloadSnippet,
     private val snippetDownloadMapper: SnippetDownloadMapper,
+    private val errorMapper: SnippetErrorMapper,
 ) {
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     fun create(
         @RequestBody request: CreateSnippetRequest,
-    ): CreateSnippetResponse {
-        val snippet =
-            createSnippet.execute(
+    ): ResponseEntity<*> =
+        createSnippet
+            .execute(
                 CreateSnippetCommand(
                     name = request.name,
                     description = request.description,
@@ -60,40 +60,38 @@ class SnippetController(
                     owner = "Anonymous",
                     content = request.content,
                 ),
-            )
-        return CreateSnippetResponse(id = snippet.id)
-    }
+            ).respond { snippet ->
+                ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(CreateSnippetResponse(id = snippet.id))
+            }
 
     @GetMapping
-    @ResponseStatus(HttpStatus.OK)
     fun list(
         @RequestParam parameters: Map<String, String>,
-    ): PageResponse<SnippetListItem> {
-        val query =
-            queryFactory.create(
+    ): ResponseEntity<*> =
+        queryFactory
+            .create(
                 parameters = parameters,
                 user = "anonymous",
-            )
-
-        return PageResponse.from(listSnippets.execute(query))
-    }
+            ).flatMap { query -> listSnippets.execute(query) }
+            .respond { page -> ResponseEntity.ok(PageResponse.from(page)) }
 
     @GetMapping("/{snippetId}")
-    @ResponseStatus(HttpStatus.OK)
     fun get(
         @PathVariable snippetId: UUID,
-    ): GetSnippetResponse {
-        val snippet = getSnippet.execute(GetSnippetQuery(snippetId))
-        return GetSnippetResponse.from(snippet)
-    }
+    ): ResponseEntity<*> =
+        getSnippet
+            .execute(GetSnippetQuery(snippetId))
+            .respond { snippet -> ResponseEntity.ok(GetSnippetResponse.from(snippet)) }
 
     @PutMapping("/{snippetId}")
     fun update(
         @PathVariable snippetId: UUID,
         @RequestBody request: UpdateSnippetRequest,
-    ): UpdateSnippetResponse {
-        val updatedSnippet =
-            updateSnippet.execute(
+    ): ResponseEntity<*> =
+        updateSnippet
+            .execute(
                 UpdateSnippetCommand(
                     id = snippetId,
                     name = request.name,
@@ -102,49 +100,38 @@ class SnippetController(
                     languageVersion = request.languageVersion,
                     content = request.content,
                 ),
-            ) ?: throw ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Snippet not found",
-            )
-
-        return UpdateSnippetResponse.from(updatedSnippet)
-    }
+            ).respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
     @DeleteMapping("/{snippetId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(
         @PathVariable snippetId: UUID,
-    ) {
-        val deleted = deleteSnippet.execute(snippetId)
-
-        if (!deleted) {
-            throw ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Snippet not found",
-            )
-        }
-    }
+    ): ResponseEntity<*> =
+        deleteSnippet
+            .execute(snippetId)
+            .respond { ResponseEntity.noContent().build<Void>() }
 
     @GetMapping("/{snippetId}/download")
     fun download(
         @PathVariable snippetId: UUID,
         @RequestParam(defaultValue = "original") version: String,
-    ): ResponseEntity<ByteArray> {
-        val variant = snippetDownloadMapper.toVariant(version)
+    ): ResponseEntity<*> =
+        snippetDownloadMapper
+            .toVariant(version)
+            .flatMap { variant ->
+                downloadSnippet
+                    .execute(id = snippetId, variant = variant)
+                    .map { content -> variant to content }
+            }.respond { (variant, content) ->
+                snippetDownloadMapper.toResponse(
+                    snippetId = snippetId,
+                    variant = variant,
+                    content = content,
+                )
+            }
 
-        val content =
-            downloadSnippet.execute(
-                id = snippetId,
-                variant = variant,
-            ) ?: throw ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Snippet not found",
-            )
-
-        return snippetDownloadMapper.toResponse(
-            snippetId = snippetId,
-            variant = variant,
-            content = content,
+    private fun <T> Result<SnippetError, T>.respond(onSuccess: (T) -> ResponseEntity<*>): ResponseEntity<*> =
+        fold(
+            onSuccess = onSuccess,
+            onFailure = errorMapper::toResponse,
         )
-    }
 }

@@ -7,7 +7,13 @@ import com.ingsisbry.snippet.adapter.persistence.query.specification.SnippetAcce
 import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.JpaSnippetVersionRepository
+import com.ingsisbry.snippet.adapter.persistence.snippetversion.SnippetVersionEntity
 import com.ingsisbry.snippet.application.common.pagination.PageResult
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetCorrupted
+import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
@@ -63,41 +69,67 @@ class JpaSnippetQueryRepositoryAdapter(
         )
     }
 
-    @Transactional(readOnly = true)
-    override fun findById(id: UUID): Snippet? {
-        val entity = repository.findById(id).orElse(null) ?: return null
-
-        val versionEntity =
-            versionRepository
-                .findById(entity.currentVersionId)
-                .orElseThrow {
-                    IllegalStateException(
-                        "Snippet ${entity.id} references missing version ${entity.currentVersionId}",
+    // Deliberately NOT @Transactional: the two lookups are simple reads, and the blob downloads below must
+    // not run while a database connection is checked out of the pool.
+    override fun findById(id: UUID): Result<SnippetError, Snippet> =
+        loadRecords(id).flatMap { (entity, version) ->
+            contentStorage.retrieve(version.originalContentKey).flatMap { originalContent ->
+                retrieveFormattedContent(version).map { formattedContent ->
+                    Snippet(
+                        id = entity.id,
+                        name = entity.name,
+                        description = entity.description,
+                        language = entity.language,
+                        languageVersion = entity.languageVersion,
+                        owner = entity.owner,
+                        currentVersion =
+                            SnippetVersion(
+                                id = version.id,
+                                snippetId = version.snippetId,
+                                versionNumber = version.versionNumber,
+                                originalContent = originalContent,
+                                formattedContent = formattedContent,
+                                createdAt = version.createdAt,
+                            ),
                     )
                 }
+            }
+        }
 
-        return Snippet(
-            id = entity.id,
-            name = entity.name,
-            description = entity.description,
-            language = entity.language,
-            languageVersion = entity.languageVersion,
-            owner = entity.owner,
-            currentVersion =
-                SnippetVersion(
-                    id = versionEntity.id,
-                    snippetId = versionEntity.snippetId,
-                    versionNumber = versionEntity.versionNumber,
-                    originalContent =
-                        contentStorage.retrieve(
-                            versionEntity.originalContentKey,
-                        ),
-                    formattedContent =
-                        versionEntity.formattedContentKey?.let(
-                            contentStorage::retrieve,
-                        ),
-                    createdAt = versionEntity.createdAt,
+    override fun findMetadataById(id: UUID): Result<SnippetError, SnippetMetadata> =
+        loadRecords(id).map { (entity, version) ->
+            SnippetMetadata(
+                id = entity.id,
+                name = entity.name,
+                description = entity.description,
+                language = entity.language,
+                languageVersion = entity.languageVersion,
+                owner = entity.owner,
+                currentVersionNumber = version.versionNumber,
+            )
+        }
+
+    private fun loadRecords(id: UUID): Result<SnippetError, Pair<SnippetEntity, SnippetVersionEntity>> {
+        val entity =
+            repository.findById(id).orElse(null)
+                ?: return Result.Failure(SnippetNotFound(id))
+
+        val version = versionRepository.findById(entity.currentVersionId).orElse(null)
+
+        return if (version == null) {
+            Result.Failure(
+                SnippetCorrupted(
+                    id = id,
+                    reason = "Snippet references missing version ${entity.currentVersionId}",
                 ),
-        )
+            )
+        } else {
+            Result.Success(entity to version)
+        }
     }
+
+    private fun retrieveFormattedContent(version: SnippetVersionEntity): Result<SnippetError, String?> =
+        version.formattedContentKey
+            ?.let { key -> contentStorage.retrieve(key) }
+            ?: Result.Success(null)
 }

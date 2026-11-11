@@ -1,9 +1,10 @@
 package com.ingsisbry.snippet.application.query.list
 
 import com.ingsisbry.snippet.application.common.pagination.PageResult
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -51,7 +52,7 @@ class ListSnippetsUseCaseTest {
 
         val result = useCase.execute(query)
 
-        assertEquals(expectedResult, result)
+        assertEquals(Result.Success(expectedResult), result)
         Mockito.verify(snippetQueryRepository).findAll(query)
     }
 
@@ -86,7 +87,7 @@ class ListSnippetsUseCaseTest {
 
         val result = useCase.execute(query)
 
-        assertEquals(expectedResult, result)
+        assertEquals(Result.Success(expectedResult), result)
         Mockito.verify(snippetQueryRepository).findAll(query)
     }
 
@@ -109,10 +110,13 @@ class ListSnippetsUseCaseTest {
 
         val result = useCase.execute(query)
 
-        assertEquals(expectedResult, result)
-        assertEquals(emptyList<SnippetListItem>(), result.content)
-        assertEquals(0, result.totalElements)
-        assertEquals(0, result.totalPages)
+        assertEquals(Result.Success(expectedResult), result)
+
+        val page = (result as Result.Success).value
+
+        assertEquals(emptyList<SnippetListItem>(), page.content)
+        assertEquals(0, page.totalElements)
+        assertEquals(0, page.totalPages)
     }
 
     @Test
@@ -134,78 +138,75 @@ class ListSnippetsUseCaseTest {
 
         val result = useCase.execute(query)
 
-        assertEquals(expectedResult, result)
+        assertEquals(Result.Success(expectedResult), result)
         Mockito.verify(snippetQueryRepository).findAll(query)
     }
 
     @Test
-    fun `execute should throw IllegalArgumentException when page is negative`() {
+    fun `execute should fail with invalid input when page is negative`() {
         val query =
             ListSnippetsQuery(
                 user = "test-user",
                 page = -1,
             )
 
-        val exception =
-            assertThrows(IllegalArgumentException::class.java) {
-                useCase.execute(query)
-            }
+        val result = useCase.execute(query)
 
         assertEquals(
-            "Page must be greater than or equal to 0",
-            exception.message,
+            Result.Failure(InvalidInput("Page must be greater than or equal to 0")),
+            result,
         )
         Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
-    fun `execute should throw IllegalArgumentException when size is zero`() {
+    fun `execute should fail with invalid input when size is zero`() {
         val query =
             ListSnippetsQuery(
                 user = "test-user",
                 size = 0,
             )
 
-        val exception =
-            assertThrows(IllegalArgumentException::class.java) {
-                useCase.execute(query)
-            }
+        val result = useCase.execute(query)
 
-        assertEquals("Size must be between 1 and 100", exception.message)
+        assertEquals(
+            Result.Failure(InvalidInput("Size must be between 1 and 100")),
+            result,
+        )
         Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
-    fun `execute should throw IllegalArgumentException when size is negative`() {
+    fun `execute should fail with invalid input when size is negative`() {
         val query =
             ListSnippetsQuery(
                 user = "test-user",
                 size = -1,
             )
 
-        val exception =
-            assertThrows(IllegalArgumentException::class.java) {
-                useCase.execute(query)
-            }
+        val result = useCase.execute(query)
 
-        assertEquals("Size must be between 1 and 100", exception.message)
+        assertEquals(
+            Result.Failure(InvalidInput("Size must be between 1 and 100")),
+            result,
+        )
         Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
-    fun `execute should throw IllegalArgumentException when size exceeds maximum`() {
+    fun `execute should fail with invalid input when size exceeds maximum`() {
         val query =
             ListSnippetsQuery(
                 user = "test-user",
                 size = 101,
             )
 
-        val exception =
-            assertThrows(IllegalArgumentException::class.java) {
-                useCase.execute(query)
-            }
+        val result = useCase.execute(query)
 
-        assertEquals("Size must be between 1 and 100", exception.message)
+        assertEquals(
+            Result.Failure(InvalidInput("Size must be between 1 and 100")),
+            result,
+        )
         Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 

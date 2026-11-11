@@ -3,9 +3,12 @@ package com.ingsisbry.snippet.adapter.web
 import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
+import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
@@ -16,10 +19,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
+import org.springframework.http.HttpStatus
 import java.time.Instant
 import java.util.UUID
 
@@ -31,7 +34,6 @@ class GetSnippetEndpointTest {
     @Mock
     private lateinit var queryFactory: ListSnippetsQueryFactory
 
-    @InjectMocks
     private lateinit var controller: SnippetController
 
     @Mock
@@ -64,6 +66,7 @@ class GetSnippetEndpointTest {
                 queryFactory = queryFactory,
                 downloadSnippet = downloadSnippet,
                 snippetDownloadMapper = snippetDownloadMapper,
+                errorMapper = SnippetErrorMapper(),
             )
     }
 
@@ -95,12 +98,27 @@ class GetSnippetEndpointTest {
         Mockito
             .`when`(
                 getSnippet.execute(GetSnippetQuery(snippet.id)),
-            ).thenReturn(snippet)
+            ).thenReturn(Result.Success(snippet))
 
         val response = controller.get(snippet.id)
 
-        assertEquals(GetSnippetResponse.from(snippet), response)
+        assertEquals(HttpStatus.OK, response.statusCode)
+        assertEquals(GetSnippetResponse.from(snippet), response.body)
 
         Mockito.verify(getSnippet).execute(GetSnippetQuery(snippet.id))
+    }
+
+    @Test
+    fun `get maps a missing snippet to 404`() {
+        val snippetId = UUID.randomUUID()
+
+        Mockito
+            .`when`(
+                getSnippet.execute(GetSnippetQuery(snippetId)),
+            ).thenReturn(Result.Failure(SnippetNotFound(snippetId)))
+
+        val response = controller.get(snippetId)
+
+        assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }
 }

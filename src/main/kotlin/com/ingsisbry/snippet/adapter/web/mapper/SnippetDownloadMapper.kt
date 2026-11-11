@@ -1,25 +1,23 @@
 package com.ingsisbry.snippet.adapter.web.mapper
 
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.query.download.SnippetContentVariant
 import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpHeaders
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Component
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @Component
 class SnippetDownloadMapper {
-    fun toVariant(version: String): SnippetContentVariant =
+    fun toVariant(version: String): Result<SnippetError, SnippetContentVariant> =
         when (version.lowercase()) {
-            "original" -> SnippetContentVariant.ORIGINAL
-            "formatted" -> SnippetContentVariant.FORMATTED
-            else -> throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Unsupported snippet content variant: $version",
-            )
+            "original" -> Result.Success(SnippetContentVariant.ORIGINAL)
+            "formatted" -> Result.Success(SnippetContentVariant.FORMATTED)
+            else -> Result.Failure(InvalidInput("Unsupported snippet content variant: $version"))
         }
 
     fun toResponse(

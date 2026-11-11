@@ -1,11 +1,15 @@
 package com.ingsisbry.snippet.adapter.web
 
+import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
+import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
 import com.ingsisbry.snippet.application.common.pagination.PageResult
+import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.list.ListSnippets
@@ -16,10 +20,10 @@ import com.ingsisbry.snippet.application.query.list.SnippetSortField
 import com.ingsisbry.snippet.application.query.list.SortDirection
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
+import org.springframework.http.HttpStatus
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +36,6 @@ class ListSnippetsEndpointTest {
     @Mock
     private lateinit var queryFactory: ListSnippetsQueryFactory
 
-    @InjectMocks
     private lateinit var controller: SnippetController
 
     @Mock
@@ -65,6 +68,7 @@ class ListSnippetsEndpointTest {
                 queryFactory = queryFactory,
                 downloadSnippet = downloadSnippet,
                 snippetDownloadMapper = snippetDownloadMapper,
+                errorMapper = SnippetErrorMapper(),
             )
     }
 
@@ -105,19 +109,16 @@ class ListSnippetsEndpointTest {
 
         Mockito
             .`when`(queryFactory.create(parameters, "anonymous"))
-            .thenReturn(query)
+            .thenReturn(Result.Success(query))
 
         Mockito
             .`when`(listSnippets.execute(query))
-            .thenReturn(pageResult)
+            .thenReturn(Result.Success(pageResult))
 
         val response = controller.list(parameters)
 
-        assertEquals(listOf(item), response.content)
-        assertEquals(0, response.page)
-        assertEquals(20, response.size)
-        assertEquals(1L, response.totalElements)
-        assertEquals(1, response.totalPages)
+        assertEquals(HttpStatus.OK, response.statusCode)
+        assertEquals(PageResponse.from(pageResult), response.body)
 
         Mockito.verify(queryFactory).create(parameters, "anonymous")
         Mockito.verify(listSnippets).execute(query)
@@ -146,29 +147,37 @@ class ListSnippetsEndpointTest {
                 direction = SortDirection.DESC,
             )
 
-        val pageResult =
-            PageResult.empty<SnippetListItem>(
-                page = 2,
-                size = 5,
-            )
+        val pageResult = PageResult.empty<SnippetListItem>(page = 2, size = 5)
 
         Mockito
             .`when`(queryFactory.create(parameters, "anonymous"))
-            .thenReturn(query)
+            .thenReturn(Result.Success(query))
 
         Mockito
             .`when`(listSnippets.execute(query))
-            .thenReturn(pageResult)
+            .thenReturn(Result.Success(pageResult))
 
         val response = controller.list(parameters)
 
-        assertEquals(emptyList(), response.content)
-        assertEquals(2, response.page)
-        assertEquals(5, response.size)
-        assertEquals(0L, response.totalElements)
-        assertEquals(0, response.totalPages)
+        assertEquals(HttpStatus.OK, response.statusCode)
+        assertEquals(PageResponse.from(pageResult), response.body)
 
         Mockito.verify(queryFactory).create(parameters, "anonymous")
         Mockito.verify(listSnippets).execute(query)
+    }
+
+    @Test
+    fun `list maps invalid parameters to 400 without hitting the use case`() {
+        val parameters = mapOf("page" to "abc")
+
+        Mockito
+            .`when`(queryFactory.create(parameters, "anonymous"))
+            .thenReturn(Result.Failure(InvalidInput("Parameter 'page' must be an integer")))
+
+        val response = controller.list(parameters)
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.statusCode)
+
+        Mockito.verifyNoInteractions(listSnippets)
     }
 }
