@@ -10,6 +10,7 @@ import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
+import com.ingsisbry.snippet.adapter.web.mapper.SnippetFileReader
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.create.CreateSnippetCommand
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
@@ -24,6 +25,7 @@ import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -34,7 +36,9 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.multipart.MultipartFile
 import java.util.UUID
 
 @RestController
@@ -66,6 +70,33 @@ class SnippetController(
                     content = request.content,
                 ),
             ).respond { snippet ->
+                ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(CreateSnippetResponse(id = snippet.id))
+            }
+
+    @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun createFromFile(
+        @RequestParam name: String,
+        @RequestParam description: String,
+        @RequestParam language: String,
+        @RequestParam languageVersion: String,
+        @RequestPart file: MultipartFile,
+    ): ResponseEntity<*> =
+        SnippetFileReader
+            .read(file)
+            .flatMap { content ->
+                createSnippet.execute(
+                    CreateSnippetCommand(
+                        name = name,
+                        description = description,
+                        language = language,
+                        languageVersion = languageVersion,
+                        owner = "Anonymous",
+                        content = content,
+                    ),
+                )
+            }.respond { snippet ->
                 ResponseEntity
                     .status(HttpStatus.CREATED)
                     .body(CreateSnippetResponse(id = snippet.id))
@@ -107,6 +138,30 @@ class SnippetController(
                 ),
             ).respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
+    @PutMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun updateFromFile(
+        @PathVariable snippetId: UUID,
+        @RequestParam name: String,
+        @RequestParam description: String,
+        @RequestParam language: String,
+        @RequestParam languageVersion: String,
+        @RequestPart file: MultipartFile,
+    ): ResponseEntity<*> =
+        SnippetFileReader
+            .read(file)
+            .flatMap { content ->
+                updateSnippet.execute(
+                    UpdateSnippetCommand(
+                        id = snippetId,
+                        name = name,
+                        description = description,
+                        language = language,
+                        languageVersion = languageVersion,
+                        content = content,
+                    ),
+                )
+            }.respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
+
     @PatchMapping("/{snippetId}")
     fun updateContent(
         @PathVariable snippetId: UUID,
@@ -115,6 +170,17 @@ class SnippetController(
         updateSnippetContent
             .execute(UpdateSnippetContentCommand(id = snippetId, content = request.content))
             .respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
+
+    @PatchMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun updateContentFromFile(
+        @PathVariable snippetId: UUID,
+        @RequestPart file: MultipartFile,
+    ): ResponseEntity<*> =
+        SnippetFileReader
+            .read(file)
+            .flatMap { content ->
+                updateSnippetContent.execute(UpdateSnippetContentCommand(id = snippetId, content = content))
+            }.respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
     @DeleteMapping("/{snippetId}")
     fun delete(

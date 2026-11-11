@@ -60,6 +60,15 @@ Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *
 | `PATCH` | `/snippets/{id}` | Replace only the content (body `{"content": ...}`); creates a new version, other fields are kept. |
 | `DELETE` | `/snippets/{id}` | Delete the snippet, all versions and their blobs. |
 | `GET` | `/snippets/{id}/download?version=original\|formatted` | Content as a `text/plain` attachment. |
+| `POST` | `/snippets/upload` | Create a snippet from an uploaded file. `multipart/form-data` with `name`, `description`, `language`, `languageVersion` and `file`. Returns `201` with the id. |
+| `PUT` | `/snippets/{id}/upload` | Replace name/description/language/content from an uploaded file. Same form fields as above; creates a new version. |
+| `PATCH` | `/snippets/{id}/upload` | Replace only the content from an uploaded file. `multipart/form-data` with `file`; creates a new version, other fields are kept. |
+
+- The three `/upload` endpoints exist because the assignment's user stories #1 and #2 require creating and
+updating snippets through file uploads. 
+- They reuse the same use cases as the JSON endpoints, so the same
+validation and versioning apply. 
+- The file must be non-empty UTF-8 text, otherwise the response is `400`.
 
 ## Architecture
 
