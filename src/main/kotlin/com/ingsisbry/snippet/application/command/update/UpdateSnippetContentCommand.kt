@@ -4,5 +4,6 @@ import java.util.UUID
 
 data class UpdateSnippetContentCommand(
     val id: UUID,
+    val userId: String,
     val content: String,
 )

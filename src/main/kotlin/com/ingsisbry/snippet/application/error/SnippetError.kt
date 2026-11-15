@@ -56,3 +56,20 @@ data class InvalidSnippetContent(
 data class LanguageServiceUnavailable(
     val reason: String?,
 ) : SnippetError
+
+/** The user has no permission to perform the action on the snippet (or the snippet does not exist for them). */
+data class AccessDenied(
+    val snippetId: UUID,
+    val userId: String,
+) : SnippetError
+
+/** The snippet is already shared with that user. */
+data class AlreadyShared(
+    val snippetId: UUID,
+    val userId: String,
+) : SnippetError
+
+/** The permission service could not complete the operation. */
+data class PermissionServiceUnavailable(
+    val reason: String?,
+) : SnippetError

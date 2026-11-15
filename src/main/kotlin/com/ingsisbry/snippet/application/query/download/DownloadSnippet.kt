@@ -7,6 +7,7 @@ import java.util.UUID
 interface DownloadSnippet {
     fun execute(
         id: UUID,
+        userId: String,
         variant: SnippetContentVariant,
     ): Result<SnippetError, String>
 }

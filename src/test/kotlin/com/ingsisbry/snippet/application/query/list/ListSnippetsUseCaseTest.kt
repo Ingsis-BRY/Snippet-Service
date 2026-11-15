@@ -3,8 +3,10 @@ package com.ingsisbry.snippet.application.query.list
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.port.out.query.SnippetFilterValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -24,10 +26,34 @@ class ListSnippetsUseCaseTest {
 
     private lateinit var useCase: ListSnippetsUseCase
 
+    private val accessibleIds = setOf(UUID.randomUUID(), UUID.randomUUID())
+    private val permissions = FakeSnippetPermissions(accessibleIds = accessibleIds)
+
     @BeforeEach
     fun setUp() {
-        useCase = ListSnippetsUseCase(snippetQueryRepository, filterValidator)
+        useCase = ListSnippetsUseCase(snippetQueryRepository, filterValidator, permissions)
         Mockito.lenient().`when`(filterValidator.validate(Mockito.anyMap())).thenReturn(Result.Success(Unit))
+    }
+
+    @Test
+    fun `execute should list only the snippets the user can access with the requested relationship`() {
+        val query = ListSnippetsQuery(user = "test-user", relationship = SnippetRelationship.SHARED)
+        val expected = PageResult.empty<SnippetListItem>(page = 0, size = 20)
+
+        Mockito.`when`(snippetQueryRepository.findAll(query, accessibleIds)).thenReturn(expected)
+
+        assertEquals(Result.Success(expected), useCase.execute(query))
+        assertEquals(SnippetRelationship.SHARED, permissions.lastRelationship)
+    }
+
+    @Test
+    fun `execute should fail without querying when the permission service is unavailable`() {
+        permissions.failure = PermissionServiceUnavailable("down")
+
+        val result = useCase.execute(ListSnippetsQuery(user = "test-user"))
+
+        assertEquals(Result.Failure(PermissionServiceUnavailable("down")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
@@ -63,13 +89,13 @@ class ListSnippetsUseCaseTest {
             )
 
         Mockito
-            .`when`(snippetQueryRepository.findAll(query))
+            .`when`(snippetQueryRepository.findAll(query, accessibleIds))
             .thenReturn(expectedResult)
 
         val result = useCase.execute(query)
 
         assertEquals(Result.Success(expectedResult), result)
-        Mockito.verify(snippetQueryRepository).findAll(query)
+        Mockito.verify(snippetQueryRepository).findAll(query, accessibleIds)
     }
 
     @Test
@@ -98,13 +124,13 @@ class ListSnippetsUseCaseTest {
             )
 
         Mockito
-            .`when`(snippetQueryRepository.findAll(query))
+            .`when`(snippetQueryRepository.findAll(query, accessibleIds))
             .thenReturn(expectedResult)
 
         val result = useCase.execute(query)
 
         assertEquals(Result.Success(expectedResult), result)
-        Mockito.verify(snippetQueryRepository).findAll(query)
+        Mockito.verify(snippetQueryRepository).findAll(query, accessibleIds)
     }
 
     @Test
@@ -121,7 +147,7 @@ class ListSnippetsUseCaseTest {
             )
 
         Mockito
-            .`when`(snippetQueryRepository.findAll(query))
+            .`when`(snippetQueryRepository.findAll(query, accessibleIds))
             .thenReturn(expectedResult)
 
         val result = useCase.execute(query)
@@ -149,13 +175,13 @@ class ListSnippetsUseCaseTest {
             )
 
         Mockito
-            .`when`(snippetQueryRepository.findAll(query))
+            .`when`(snippetQueryRepository.findAll(query, accessibleIds))
             .thenReturn(expectedResult)
 
         val result = useCase.execute(query)
 
         assertEquals(Result.Success(expectedResult), result)
-        Mockito.verify(snippetQueryRepository).findAll(query)
+        Mockito.verify(snippetQueryRepository).findAll(query, accessibleIds)
     }
 
     @Test

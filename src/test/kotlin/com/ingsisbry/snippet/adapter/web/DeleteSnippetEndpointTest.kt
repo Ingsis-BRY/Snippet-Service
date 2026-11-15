@@ -72,14 +72,14 @@ class DeleteSnippetEndpointTest {
         val snippetId = UUID.randomUUID()
 
         Mockito
-            .`when`(deleteSnippet.execute(snippetId))
+            .`when`(deleteSnippet.execute(snippetId, "test-user"))
             .thenReturn(Result.Success(Unit))
 
-        val response = controller.delete(snippetId)
+        val response = controller.delete("test-user", snippetId)
 
         assertEquals(HttpStatus.NO_CONTENT, response.statusCode)
 
-        Mockito.verify(deleteSnippet).execute(snippetId)
+        Mockito.verify(deleteSnippet).execute(snippetId, "test-user")
     }
 
     @Test
@@ -87,13 +87,13 @@ class DeleteSnippetEndpointTest {
         val snippetId = UUID.randomUUID()
 
         Mockito
-            .`when`(deleteSnippet.execute(snippetId))
+            .`when`(deleteSnippet.execute(snippetId, "test-user"))
             .thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.delete(snippetId)
+        val response = controller.delete("test-user", snippetId)
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
 
-        Mockito.verify(deleteSnippet).execute(snippetId)
+        Mockito.verify(deleteSnippet).execute(snippetId, "test-user")
     }
 }

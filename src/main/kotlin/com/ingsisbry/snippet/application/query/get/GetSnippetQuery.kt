@@ -4,4 +4,5 @@ import java.util.UUID
 
 data class GetSnippetQuery(
     val snippetId: UUID,
+    val userId: String,
 )

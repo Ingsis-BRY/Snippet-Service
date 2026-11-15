@@ -69,10 +69,10 @@ class UploadSnippetEndpointTest {
     @Test
     fun `create from file returns 201 with the file content as the snippet content`() {
         val command =
-            CreateSnippetCommand("Example", "Example snippet", "PrintScript", "1.0", "Anonymous", "println(1)")
+            CreateSnippetCommand("Example", "Example snippet", "PrintScript", "1.0", "test-user", "println(1)")
         Mockito.`when`(createSnippet.execute(command)).thenReturn(Result.Success(snippet()))
 
-        val response = controller.createFromFile("Example", "Example snippet", "PrintScript", "1.0", file)
+        val response = controller.createFromFile("test-user", "Example", "Example snippet", "PrintScript", "1.0", file)
 
         assertEquals(HttpStatus.CREATED, response.statusCode)
         assertEquals(CreateSnippetResponse(id = snippetId), response.body)
@@ -82,7 +82,7 @@ class UploadSnippetEndpointTest {
     fun `create from an empty file returns 400 without creating anything`() {
         val empty = MockMultipartFile("file", "empty.ps", "text/plain", ByteArray(0))
 
-        val response = controller.createFromFile("Example", "Example snippet", "PrintScript", "1.0", empty)
+        val response = controller.createFromFile("test-user", "Example", "Example snippet", "PrintScript", "1.0", empty)
 
         assertEquals(HttpStatus.BAD_REQUEST, response.statusCode)
         Mockito.verifyNoInteractions(createSnippet)
@@ -91,10 +91,19 @@ class UploadSnippetEndpointTest {
     @Test
     fun `update from file returns 200 and replaces all fields`() {
         val command =
-            UpdateSnippetCommand(snippetId, "Example", "Example snippet", "PrintScript", "1.0", "println(1)")
+            UpdateSnippetCommand(
+                snippetId,
+                "test-user",
+                "Example",
+                "Example snippet",
+                "PrintScript",
+                "1.0",
+                "println(1)",
+            )
         Mockito.`when`(updateSnippet.execute(command)).thenReturn(Result.Success(snippet()))
 
-        val response = controller.updateFromFile(snippetId, "Example", "Example snippet", "PrintScript", "1.0", file)
+        val response =
+            controller.updateFromFile("test-user", snippetId, "Example", "Example snippet", "PrintScript", "1.0", file)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         Mockito.verify(updateSnippet).execute(command)
@@ -103,20 +112,29 @@ class UploadSnippetEndpointTest {
     @Test
     fun `update from file maps a missing snippet to 404`() {
         val command =
-            UpdateSnippetCommand(snippetId, "Example", "Example snippet", "PrintScript", "1.0", "println(1)")
+            UpdateSnippetCommand(
+                snippetId,
+                "test-user",
+                "Example",
+                "Example snippet",
+                "PrintScript",
+                "1.0",
+                "println(1)",
+            )
         Mockito.`when`(updateSnippet.execute(command)).thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.updateFromFile(snippetId, "Example", "Example snippet", "PrintScript", "1.0", file)
+        val response =
+            controller.updateFromFile("test-user", snippetId, "Example", "Example snippet", "PrintScript", "1.0", file)
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }
 
     @Test
     fun `patch from file returns 200 and only sends the content`() {
-        val command = UpdateSnippetContentCommand(snippetId, "println(1)")
+        val command = UpdateSnippetContentCommand(snippetId, "test-user", "println(1)")
         Mockito.`when`(updateSnippetContent.execute(command)).thenReturn(Result.Success(snippet()))
 
-        val response = controller.updateContentFromFile(snippetId, file)
+        val response = controller.updateContentFromFile("test-user", snippetId, file)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         Mockito.verify(updateSnippetContent).execute(command)
@@ -124,12 +142,12 @@ class UploadSnippetEndpointTest {
 
     @Test
     fun `patch from file maps a missing snippet to 404`() {
-        val command = UpdateSnippetContentCommand(snippetId, "println(1)")
+        val command = UpdateSnippetContentCommand(snippetId, "test-user", "println(1)")
         Mockito
             .`when`(updateSnippetContent.execute(command))
             .thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.updateContentFromFile(snippetId, file)
+        val response = controller.updateContentFromFile("test-user", snippetId, file)
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }

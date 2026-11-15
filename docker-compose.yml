@@ -15,10 +15,35 @@ services:
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       AZURE_STORAGE_CONNECTION_STRING: "${AZURE_STORAGE_CONNECTION_STRING}"
+      PERMISSION_SERVICE_URL: "http://snippet-permission-service:8080"
 
     depends_on:
       - postgres
       - azurite
+      - snippet-permission-service
+
+  snippet-permission-service:
+    image: "${PERMISSION_SERVICE_IMAGE:-ghcr.io/ingsis-bry/snippet-permission-service:latest}"
+
+    environment:
+      DB_HOST: snippet-permission-db
+      POSTGRES_DB: "${PERMISSION_POSTGRES_DB}"
+      POSTGRES_USER: "${PERMISSION_POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${PERMISSION_POSTGRES_PASSWORD}"
+
+    depends_on:
+      - snippet-permission-db
+
+  snippet-permission-db:
+    image: postgres:17
+
+    environment:
+      POSTGRES_DB: "${PERMISSION_POSTGRES_DB}"
+      POSTGRES_USER: "${PERMISSION_POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${PERMISSION_POSTGRES_PASSWORD}"
+
+    volumes:
+      - snippet-permission-db-data:/var/lib/postgresql/data
 
   postgres:
     image: postgres:17
@@ -47,6 +72,7 @@ services:
 volumes:
   postgres-data:
   azurite-data:
+  snippet-permission-db-data:
 
 secrets:
   github_username:

@@ -1,10 +1,14 @@
 package com.ingsisbry.snippet.application.query.get
 
 import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.AccessDenied
+import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.port.out.permission.SnippetAction
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -23,16 +27,17 @@ class GetSnippetUseCaseTest {
     private lateinit var useCase: GetSnippetUseCase
 
     private val snippetId = UUID.randomUUID()
+    private val permissions = FakeSnippetPermissions()
 
     @BeforeEach
     fun setUp() {
-        useCase = GetSnippetUseCase(snippetQueryRepository)
+        useCase = GetSnippetUseCase(snippetQueryRepository, permissions)
     }
 
     @Test
     fun `execute should return snippet when it exists`() {
         val snippet = createSnippet()
-        val query = GetSnippetQuery(snippetId)
+        val query = GetSnippetQuery(snippetId, "test-user")
 
         Mockito
             .`when`(snippetQueryRepository.findById(snippetId))
@@ -43,11 +48,32 @@ class GetSnippetUseCaseTest {
         assertEquals(Result.Success(snippet), result)
 
         Mockito.verify(snippetQueryRepository).findById(snippetId)
+        assertEquals(listOf(Triple(snippetId, "test-user", SnippetAction.READ)), permissions.checks)
+    }
+
+    @Test
+    fun `execute should deny access without loading the snippet when the user cannot read it`() {
+        permissions.allowed = false
+
+        val result = useCase.execute(GetSnippetQuery(snippetId, "intruder"))
+
+        assertEquals(Result.Failure(AccessDenied(snippetId, "intruder")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository)
+    }
+
+    @Test
+    fun `execute should fail when the permission service is unavailable`() {
+        permissions.failure = PermissionServiceUnavailable("down")
+
+        val result = useCase.execute(GetSnippetQuery(snippetId, "test-user"))
+
+        assertEquals(Result.Failure(PermissionServiceUnavailable("down")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
     fun `execute should fail with not found when snippet does not exist`() {
-        val query = GetSnippetQuery(snippetId)
+        val query = GetSnippetQuery(snippetId, "test-user")
         val failure = Result.Failure(SnippetNotFound(snippetId))
 
         Mockito

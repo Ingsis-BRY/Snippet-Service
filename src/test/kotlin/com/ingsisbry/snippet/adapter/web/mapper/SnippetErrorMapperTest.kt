@@ -1,10 +1,13 @@
 package com.ingsisbry.snippet.adapter.web.mapper
 
+import com.ingsisbry.snippet.application.error.AccessDenied
+import com.ingsisbry.snippet.application.error.AlreadyShared
 import com.ingsisbry.snippet.application.error.ContentMissing
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
+import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
@@ -35,6 +38,9 @@ class SnippetErrorMapperTest {
                 PersistenceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
                 ContentMissing("key") to HttpStatus.INTERNAL_SERVER_ERROR,
                 SnippetCorrupted(id, "missing version") to HttpStatus.INTERNAL_SERVER_ERROR,
+                AccessDenied(id, "intruder") to HttpStatus.FORBIDDEN,
+                AlreadyShared(id, "enzo") to HttpStatus.CONFLICT,
+                PermissionServiceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
             )
 
         expected.forEach { (error, status) ->
@@ -51,6 +57,7 @@ class SnippetErrorMapperTest {
             listOf(
                 ContentStoreUnavailable("secret/blob/key", "connection string xyz"),
                 PersistenceUnavailable("jdbc:postgresql://secret-host"),
+                PermissionServiceUnavailable("http://snippet-permission-service:8080 refused"),
                 ContentMissing("secret/blob/key"),
                 SnippetCorrupted(id, "secret reason"),
             )

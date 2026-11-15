@@ -1,10 +1,12 @@
 package com.ingsisbry.snippet.application.query.download
 
 import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -26,9 +28,21 @@ class DownloadSnippetUseCaseTest {
     private val versionId = UUID.randomUUID()
     private val originalContent = "fun main() = println(\"Hello\")"
 
+    private val permissions = FakeSnippetPermissions()
+
     @BeforeEach
     fun setUp() {
-        useCase = DownloadSnippetUseCase(snippetQueryRepository)
+        useCase = DownloadSnippetUseCase(snippetQueryRepository, permissions)
+    }
+
+    @Test
+    fun `execute should deny the download without loading the snippet when the user cannot read it`() {
+        permissions.allowed = false
+
+        val result = useCase.execute(snippetId, "intruder", SnippetContentVariant.ORIGINAL)
+
+        assertEquals(Result.Failure(AccessDenied(snippetId, "intruder")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository)
     }
 
     @Test
@@ -37,7 +51,7 @@ class DownloadSnippetUseCaseTest {
             .`when`(snippetQueryRepository.findById(snippetId))
             .thenReturn(Result.Success(createSnippet()))
 
-        val result = useCase.execute(snippetId, SnippetContentVariant.ORIGINAL)
+        val result = useCase.execute(snippetId, "test-user", SnippetContentVariant.ORIGINAL)
 
         assertEquals(Result.Success(originalContent), result)
         Mockito.verify(snippetQueryRepository).findById(snippetId)
@@ -49,7 +63,7 @@ class DownloadSnippetUseCaseTest {
             .`when`(snippetQueryRepository.findById(snippetId))
             .thenReturn(Result.Success(createSnippet()))
 
-        val result = useCase.execute(snippetId, SnippetContentVariant.FORMATTED)
+        val result = useCase.execute(snippetId, "test-user", SnippetContentVariant.FORMATTED)
 
         // Currently the use case returns the original content for the FORMATTED variant too.
         assertEquals(Result.Success(originalContent), result)
@@ -64,7 +78,7 @@ class DownloadSnippetUseCaseTest {
             .`when`(snippetQueryRepository.findById(snippetId))
             .thenReturn(failure)
 
-        val result = useCase.execute(snippetId, SnippetContentVariant.ORIGINAL)
+        val result = useCase.execute(snippetId, "test-user", SnippetContentVariant.ORIGINAL)
 
         assertEquals(failure, result)
         Mockito.verify(snippetQueryRepository).findById(snippetId)

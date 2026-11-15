@@ -89,7 +89,7 @@ class CreateSnippetEndpointTest {
             description = "Example snippet",
             language = "PrintScript",
             languageVersion = "1.0",
-            owner = "Anonymous",
+            owner = "test-user",
             content = "println(1)",
         )
 
@@ -118,7 +118,7 @@ class CreateSnippetEndpointTest {
             .`when`(createSnippet.execute(command))
             .thenReturn(Result.Success(snippet))
 
-        val response = controller.create(request)
+        val response = controller.create("test-user", request)
 
         assertEquals(HttpStatus.CREATED, response.statusCode)
         assertEquals(CreateSnippetResponse(id = snippetId), response.body)
@@ -132,7 +132,7 @@ class CreateSnippetEndpointTest {
             .`when`(createSnippet.execute(command))
             .thenReturn(Result.Failure(ContentStoreUnavailable("key", "down")))
 
-        val response = controller.create(request)
+        val response = controller.create("test-user", request)
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.statusCode)
     }
@@ -143,7 +143,7 @@ class CreateSnippetEndpointTest {
             .`when`(createSnippet.execute(command))
             .thenReturn(Result.Failure(PersistenceUnavailable("down")))
 
-        val response = controller.create(request)
+        val response = controller.create("test-user", request)
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.statusCode)
     }

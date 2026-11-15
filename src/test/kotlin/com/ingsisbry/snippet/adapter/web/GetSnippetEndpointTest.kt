@@ -99,15 +99,15 @@ class GetSnippetEndpointTest {
 
         Mockito
             .`when`(
-                getSnippet.execute(GetSnippetQuery(snippet.id)),
+                getSnippet.execute(GetSnippetQuery(snippet.id, "test-user")),
             ).thenReturn(Result.Success(snippet))
 
-        val response = controller.get(snippet.id)
+        val response = controller.get("test-user", snippet.id)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals(GetSnippetResponse.from(snippet), response.body)
 
-        Mockito.verify(getSnippet).execute(GetSnippetQuery(snippet.id))
+        Mockito.verify(getSnippet).execute(GetSnippetQuery(snippet.id, "test-user"))
     }
 
     @Test
@@ -116,10 +116,10 @@ class GetSnippetEndpointTest {
 
         Mockito
             .`when`(
-                getSnippet.execute(GetSnippetQuery(snippetId)),
+                getSnippet.execute(GetSnippetQuery(snippetId, "test-user")),
             ).thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.get(snippetId)
+        val response = controller.get("test-user", snippetId)
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }

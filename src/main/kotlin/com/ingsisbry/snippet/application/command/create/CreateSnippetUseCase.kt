@@ -7,9 +7,11 @@ import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
+import com.ingsisbry.snippet.application.port.out.permission.SnippetPermissions
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetRules
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -21,8 +23,11 @@ class CreateSnippetUseCase(
     private val contentStorage: SnippetContentStorage,
     private val supportedLanguages: SupportedLanguages,
     private val contentValidator: SnippetContentValidator,
+    private val permissions: SnippetPermissions,
     private val clock: Clock,
 ) : CreateSnippet {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
     override fun execute(command: CreateSnippetCommand): Result<SnippetError, Snippet> {
         val violation =
             SnippetRules.violation(
@@ -41,6 +46,31 @@ class CreateSnippetUseCase(
             .check(command.language, command.languageVersion)
             .flatMap { contentValidator.validate(command.language, command.languageVersion, command.content) }
             .flatMap { store(command) }
+            .flatMap { snippet -> registerOwner(snippet) }
+    }
+
+    /**
+     * The snippet and its permissions live in different services, so they cannot share a transaction.
+     * If the owner cannot be registered the snippet is removed, otherwise nobody could ever access it.
+     */
+    private fun registerOwner(snippet: Snippet): Result<SnippetError, Snippet> =
+        permissions
+            .registerOwner(snippetId = snippet.id, userId = snippet.owner)
+            .map { snippet }
+            .onFailure { undo(snippet) }
+
+    private fun undo(snippet: Snippet) {
+        snippetRepository
+            .deleteById(snippet.id)
+            .onSuccess { contentKeys ->
+                contentKeys.forEach { key ->
+                    contentStorage.delete(key).onFailure { error ->
+                        logger.warn("Failed to clean up snippet blob {}: {}", key, error)
+                    }
+                }
+            }.onFailure { error ->
+                logger.error("Failed to remove snippet {} without owner: {}", snippet.id, error)
+            }
     }
 
     private fun store(command: CreateSnippetCommand): Result<SnippetError, Snippet> {

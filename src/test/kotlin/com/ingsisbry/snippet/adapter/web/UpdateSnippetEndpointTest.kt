@@ -113,6 +113,7 @@ class UpdateSnippetEndpointTest {
         request: UpdateSnippetRequest,
     ) = UpdateSnippetCommand(
         id = snippetId,
+        userId = "test-user",
         name = request.name,
         description = request.description,
         language = request.language,
@@ -138,7 +139,7 @@ class UpdateSnippetEndpointTest {
             .`when`(updateSnippet.execute(command))
             .thenReturn(Result.Success(updatedSnippet))
 
-        val response = controller.update(snippet.id, request)
+        val response = controller.update("test-user", snippet.id, request)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals(UpdateSnippetResponse.from(updatedSnippet), response.body)
@@ -156,7 +157,7 @@ class UpdateSnippetEndpointTest {
             .`when`(updateSnippet.execute(command))
             .thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.update(snippetId, request)
+        val response = controller.update("test-user", snippetId, request)
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
 
@@ -166,13 +167,13 @@ class UpdateSnippetEndpointTest {
     @Test
     fun `patch returns 200 with the snippet updated by content only`() {
         val snippet = createTestSnippet()
-        val command = UpdateSnippetContentCommand(snippet.id, "println(3)")
+        val command = UpdateSnippetContentCommand(snippet.id, "test-user", "println(3)")
 
         Mockito
             .`when`(updateSnippetContent.execute(command))
             .thenReturn(Result.Success(snippet))
 
-        val response = controller.updateContent(snippet.id, UpdateSnippetContentRequest("println(3)"))
+        val response = controller.updateContent("test-user", snippet.id, UpdateSnippetContentRequest("println(3)"))
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals(UpdateSnippetResponse.from(snippet), response.body)
@@ -181,12 +182,12 @@ class UpdateSnippetEndpointTest {
     @Test
     fun `patch maps a missing snippet to 404`() {
         val id = UUID.randomUUID()
-        val command = UpdateSnippetContentCommand(id, "x")
+        val command = UpdateSnippetContentCommand(id, "test-user", "x")
         Mockito
             .`when`(updateSnippetContent.execute(command))
             .thenReturn(Result.Failure(SnippetNotFound(id)))
 
-        val response = controller.updateContent(id, UpdateSnippetContentRequest("x"))
+        val response = controller.updateContent("test-user", id, UpdateSnippetContentRequest("x"))
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
     }

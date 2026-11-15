@@ -18,7 +18,6 @@ import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
-import com.ingsisbry.snippet.application.query.list.SnippetRelationship
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
 import org.springframework.data.domain.PageRequest
@@ -35,8 +34,11 @@ class JpaSnippetQueryRepositoryAdapter(
     private val contentStorage: SnippetContentStorage,
 ) : SnippetQueryRepository {
     @Transactional(readOnly = true)
-    override fun findAll(query: ListSnippetsQuery): PageResult<SnippetListItem> {
-        if (query.relationship == SnippetRelationship.SHARED) {
+    override fun findAll(
+        query: ListSnippetsQuery,
+        snippetIds: Set<UUID>,
+    ): PageResult<SnippetListItem> {
+        if (snippetIds.isEmpty()) {
             return PageResult.Companion.empty(
                 page = query.page,
                 size = query.size,
@@ -55,7 +57,7 @@ class JpaSnippetQueryRepositoryAdapter(
 
         val specification: Specification<SnippetEntity> =
             SnippetAccessSpecifications
-                .belongsToUser(query.user)
+                .idIn(snippetIds)
                 .and(filterRegistry.toSpecification(query.filters))
 
         val result = repository.findAll(specification, pageable)

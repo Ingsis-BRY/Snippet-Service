@@ -1,10 +1,13 @@
 package com.ingsisbry.snippet.adapter.web.mapper
 
+import com.ingsisbry.snippet.application.error.AccessDenied
+import com.ingsisbry.snippet.application.error.AlreadyShared
 import com.ingsisbry.snippet.application.error.ContentMissing
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
+import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
@@ -24,6 +27,12 @@ class SnippetErrorMapper {
                 is SnippetNotFound -> HttpStatus.NOT_FOUND to "Snippet ${error.id} not found"
                 is SnippetConflict -> HttpStatus.CONFLICT to "Snippet ${error.id} conflicts with existing data"
                 is InvalidInput -> HttpStatus.BAD_REQUEST to error.reason
+                is AccessDenied ->
+                    HttpStatus.FORBIDDEN to "You are not allowed to perform this action on snippet ${error.snippetId}"
+                is AlreadyShared ->
+                    HttpStatus.CONFLICT to "Snippet ${error.snippetId} is already shared with ${error.userId}"
+                is PermissionServiceUnavailable ->
+                    HttpStatus.SERVICE_UNAVAILABLE to "Permission service is unavailable"
                 is InvalidSnippetContent ->
                     HttpStatus.BAD_REQUEST to
                         "Snippet breaks the rule '${error.rule}' at line ${error.line}, column ${error.column}"

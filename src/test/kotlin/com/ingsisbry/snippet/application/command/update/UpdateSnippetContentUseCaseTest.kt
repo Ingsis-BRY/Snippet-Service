@@ -1,6 +1,7 @@
 package com.ingsisbry.snippet.application.command.update
 
 import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
@@ -13,6 +14,7 @@ import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetRules
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -43,6 +45,8 @@ class UpdateSnippetContentUseCaseTest {
 
     private val now = Instant.parse("2026-11-11T10:00:00Z")
 
+    private val permissions = FakeSnippetPermissions()
+
     @BeforeEach
     fun setUp() {
         useCase =
@@ -51,8 +55,20 @@ class UpdateSnippetContentUseCaseTest {
                 snippetRepository,
                 contentStorage,
                 SnippetContentValidator { _, _, _ -> contentValidation },
+                permissions,
                 Clock.fixed(now, ZoneOffset.UTC),
             )
+    }
+
+    @Test
+    fun `execute denies the update without touching anything when the user cannot write`() {
+        val id = UUID.randomUUID()
+        permissions.allowed = false
+
+        val result = useCase.execute(UpdateSnippetContentCommand(id, "reader", "x"))
+
+        assertEquals(Result.Failure(AccessDenied(id, "reader")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
     }
 
     @Test
@@ -65,7 +81,7 @@ class UpdateSnippetContentUseCaseTest {
         contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
 
         // when
-        val result = useCase.execute(UpdateSnippetContentCommand(id, "let x = 1;"))
+        val result = useCase.execute(UpdateSnippetContentCommand(id, "test-user", "let x = 1;"))
 
         // then
         assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
@@ -85,7 +101,7 @@ class UpdateSnippetContentUseCaseTest {
             .`when`(snippetRepository.update(anySnippet(), Mockito.anyString()))
             .thenAnswer { Result.Success(it.getArgument<Snippet>(0)) }
 
-        val result = useCase.execute(UpdateSnippetContentCommand(id, "new content"))
+        val result = useCase.execute(UpdateSnippetContentCommand(id, "test-user", "new content"))
 
         val snippet = (result as Result.Success).value
         assertEquals("Old name", snippet.name)
@@ -104,7 +120,7 @@ class UpdateSnippetContentUseCaseTest {
         val failure = Result.Failure(SnippetNotFound(id))
         Mockito.`when`(snippetQueryRepository.findMetadataById(id)).thenReturn(failure)
 
-        assertEquals(failure, useCase.execute(UpdateSnippetContentCommand(id, "x")))
+        assertEquals(failure, useCase.execute(UpdateSnippetContentCommand(id, "test-user", "x")))
         Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 
@@ -123,7 +139,7 @@ class UpdateSnippetContentUseCaseTest {
             .`when`(contentStorage.delete(Mockito.anyString()))
             .thenReturn(Result.Success(Unit))
 
-        assertEquals(failure, useCase.execute(UpdateSnippetContentCommand(id, "x")))
+        assertEquals(failure, useCase.execute(UpdateSnippetContentCommand(id, "test-user", "x")))
         Mockito.verify(contentStorage).delete(Mockito.anyString())
     }
 
@@ -131,7 +147,7 @@ class UpdateSnippetContentUseCaseTest {
     fun `execute rejects content that is too long without touching dependencies`() {
         val content = "a".repeat(SnippetRules.MAX_CONTENT_LENGTH + 1)
 
-        val result = useCase.execute(UpdateSnippetContentCommand(UUID.randomUUID(), content))
+        val result = useCase.execute(UpdateSnippetContentCommand(UUID.randomUUID(), "test-user", content))
 
         assertTrue(result is Result.Failure && result.error is InvalidInput)
         Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
