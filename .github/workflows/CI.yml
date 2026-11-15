@@ -28,3 +28,6 @@ jobs:
 
       - name: Run check
         run: ./gradlew check
+        env:
+          USERNAME: ${{ secrets.GH_PACKAGES_USERNAME }}
+          TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
