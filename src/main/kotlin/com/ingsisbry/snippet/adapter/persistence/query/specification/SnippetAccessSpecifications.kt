@@ -1,28 +1,13 @@
 package com.ingsisbry.snippet.adapter.persistence.query.specification
 
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
-import jakarta.persistence.criteria.CriteriaBuilder
-import jakarta.persistence.criteria.Predicate
-import jakarta.persistence.criteria.Root
 import org.springframework.data.jpa.domain.Specification
+import java.util.UUID
 
 object SnippetAccessSpecifications {
-    fun belongsToUser(user: String): Specification<SnippetEntity> =
-        Specification { root, _, criteriaBuilder ->
-            matchesUser(
-                root = root,
-                criteriaBuilder = criteriaBuilder,
-                user = user,
-            )
-        }
-
-    private fun matchesUser(
-        root: Root<SnippetEntity>,
-        criteriaBuilder: CriteriaBuilder,
-        user: String,
-    ): Predicate =
-        criteriaBuilder.equal(
-            criteriaBuilder.lower(root.get("owner")),
-            user.lowercase(),
-        )
+    /** Restricts the query to the snippets the permission service says the user can access. */
+    fun idIn(snippetIds: Set<UUID>): Specification<SnippetEntity> {
+        val spec = Specification<SnippetEntity> { root, _, _ -> root.get<UUID>("id").`in`(snippetIds) }
+        return spec
+    }
 }

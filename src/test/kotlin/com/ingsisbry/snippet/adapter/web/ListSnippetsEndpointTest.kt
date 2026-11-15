@@ -110,19 +110,19 @@ class ListSnippetsEndpointTest {
             )
 
         Mockito
-            .`when`(queryFactory.create(parameters, "anonymous"))
+            .`when`(queryFactory.create(parameters, "test-user"))
             .thenReturn(Result.Success(query))
 
         Mockito
             .`when`(listSnippets.execute(query))
             .thenReturn(Result.Success(pageResult))
 
-        val response = controller.list(parameters)
+        val response = controller.list("test-user", parameters)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals(PageResponse.from(pageResult), response.body)
 
-        Mockito.verify(queryFactory).create(parameters, "anonymous")
+        Mockito.verify(queryFactory).create(parameters, "test-user")
         Mockito.verify(listSnippets).execute(query)
     }
 
@@ -152,19 +152,19 @@ class ListSnippetsEndpointTest {
         val pageResult = PageResult.empty<SnippetListItem>(page = 2, size = 5)
 
         Mockito
-            .`when`(queryFactory.create(parameters, "anonymous"))
+            .`when`(queryFactory.create(parameters, "test-user"))
             .thenReturn(Result.Success(query))
 
         Mockito
             .`when`(listSnippets.execute(query))
             .thenReturn(Result.Success(pageResult))
 
-        val response = controller.list(parameters)
+        val response = controller.list("test-user", parameters)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals(PageResponse.from(pageResult), response.body)
 
-        Mockito.verify(queryFactory).create(parameters, "anonymous")
+        Mockito.verify(queryFactory).create(parameters, "test-user")
         Mockito.verify(listSnippets).execute(query)
     }
 
@@ -173,10 +173,10 @@ class ListSnippetsEndpointTest {
         val parameters = mapOf("page" to "abc")
 
         Mockito
-            .`when`(queryFactory.create(parameters, "anonymous"))
+            .`when`(queryFactory.create(parameters, "test-user"))
             .thenReturn(Result.Failure(InvalidInput("Parameter 'page' must be an integer")))
 
-        val response = controller.list(parameters)
+        val response = controller.list("test-user", parameters)
 
         assertEquals(HttpStatus.BAD_REQUEST, response.statusCode)
 

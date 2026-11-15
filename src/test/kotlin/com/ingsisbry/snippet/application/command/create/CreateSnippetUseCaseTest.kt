@@ -4,6 +4,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
+import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetError
@@ -13,6 +14,7 @@ import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidat
 import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -41,6 +43,8 @@ class CreateSnippetUseCaseTest {
     private var languageCheck: Result<SnippetError, Unit> = Result.Success(Unit)
     private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
 
+    private val permissions = FakeSnippetPermissions()
+
     private val createdAt = Instant.parse("2026-10-27T12:00:00Z")
 
     @BeforeEach
@@ -53,6 +57,7 @@ class CreateSnippetUseCaseTest {
                 contentStorage = contentStorage,
                 supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
                 contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
+                permissions = permissions,
                 clock = clock,
             )
     }
@@ -143,6 +148,33 @@ class CreateSnippetUseCaseTest {
 
         Mockito.verify(snippetRepository).save(snippet, keyCaptor.value)
         Mockito.verify(contentStorage, Mockito.never()).delete(Mockito.anyString())
+        assertEquals(mapOf(snippet.id to command.owner), permissions.owners)
+    }
+
+    @Test
+    fun `execute should remove the snippet and its content when the owner cannot be registered`() {
+        permissions.failure = PermissionServiceUnavailable("down")
+        val storedKey = ArgumentCaptor.forClass(String::class.java)
+
+        Mockito
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+        Mockito
+            .`when`(snippetRepository.save(anySnippet(), Mockito.anyString()))
+            .thenAnswer { invocation -> Result.Success(invocation.getArgument<Snippet>(0)) }
+        Mockito
+            .`when`(snippetRepository.deleteById(anyUuid()))
+            .thenAnswer { Result.Success(listOf("stored-key")) }
+        Mockito
+            .`when`(contentStorage.delete(Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+
+        val result = useCase.execute(command)
+
+        assertEquals(Result.Failure(PermissionServiceUnavailable("down")), result)
+        Mockito.verify(contentStorage).store(captureString(storedKey), eqString(command.content))
+        Mockito.verify(snippetRepository).deleteById(anyUuid())
+        Mockito.verify(contentStorage).delete("stored-key")
     }
 
     @Test
@@ -220,6 +252,8 @@ class CreateSnippetUseCaseTest {
                 versionId = UUID.randomUUID(),
                 createdAt = createdAt,
             )
+
+    private fun anyUuid(): UUID = Mockito.any(UUID::class.java) ?: UUID.randomUUID()
 
     private fun eqString(value: String): String = Mockito.eq(value) ?: value
 

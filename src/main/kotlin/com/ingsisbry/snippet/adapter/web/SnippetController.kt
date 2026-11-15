@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
@@ -57,6 +58,7 @@ class SnippetController(
 ) {
     @PostMapping
     fun create(
+        @RequestHeader(USER_HEADER) userId: String,
         @RequestBody request: CreateSnippetRequest,
     ): ResponseEntity<*> =
         createSnippet
@@ -66,7 +68,7 @@ class SnippetController(
                     description = request.description,
                     language = request.language,
                     languageVersion = request.languageVersion,
-                    owner = "Anonymous",
+                    owner = userId,
                     content = request.content,
                 ),
             ).respond { snippet ->
@@ -77,6 +79,7 @@ class SnippetController(
 
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun createFromFile(
+        @RequestHeader(USER_HEADER) userId: String,
         @RequestParam name: String,
         @RequestParam description: String,
         @RequestParam language: String,
@@ -92,7 +95,7 @@ class SnippetController(
                         description = description,
                         language = language,
                         languageVersion = languageVersion,
-                        owner = "Anonymous",
+                        owner = userId,
                         content = content,
                     ),
                 )
@@ -104,25 +107,28 @@ class SnippetController(
 
     @GetMapping
     fun list(
+        @RequestHeader(USER_HEADER) userId: String,
         @RequestParam parameters: Map<String, String>,
     ): ResponseEntity<*> =
         queryFactory
             .create(
                 parameters = parameters,
-                user = "anonymous",
+                user = userId,
             ).flatMap { query -> listSnippets.execute(query) }
             .respond { page -> ResponseEntity.ok(PageResponse.from(page)) }
 
     @GetMapping("/{snippetId}")
     fun get(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
     ): ResponseEntity<*> =
         getSnippet
-            .execute(GetSnippetQuery(snippetId))
+            .execute(GetSnippetQuery(snippetId = snippetId, userId = userId))
             .respond { snippet -> ResponseEntity.ok(GetSnippetResponse.from(snippet)) }
 
     @PutMapping("/{snippetId}")
     fun update(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
         @RequestBody request: UpdateSnippetRequest,
     ): ResponseEntity<*> =
@@ -130,6 +136,7 @@ class SnippetController(
             .execute(
                 UpdateSnippetCommand(
                     id = snippetId,
+                    userId = userId,
                     name = request.name,
                     description = request.description,
                     language = request.language,
@@ -140,6 +147,7 @@ class SnippetController(
 
     @PutMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun updateFromFile(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
         @RequestParam name: String,
         @RequestParam description: String,
@@ -153,6 +161,7 @@ class SnippetController(
                 updateSnippet.execute(
                     UpdateSnippetCommand(
                         id = snippetId,
+                        userId = userId,
                         name = name,
                         description = description,
                         language = language,
@@ -164,34 +173,40 @@ class SnippetController(
 
     @PatchMapping("/{snippetId}")
     fun updateContent(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
         @RequestBody request: UpdateSnippetContentRequest,
     ): ResponseEntity<*> =
         updateSnippetContent
-            .execute(UpdateSnippetContentCommand(id = snippetId, content = request.content))
+            .execute(UpdateSnippetContentCommand(id = snippetId, userId = userId, content = request.content))
             .respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
     @PatchMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun updateContentFromFile(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
         @RequestPart file: MultipartFile,
     ): ResponseEntity<*> =
         SnippetFileReader
             .read(file)
             .flatMap { content ->
-                updateSnippetContent.execute(UpdateSnippetContentCommand(id = snippetId, content = content))
+                updateSnippetContent.execute(
+                    UpdateSnippetContentCommand(id = snippetId, userId = userId, content = content),
+                )
             }.respond { snippet -> ResponseEntity.ok(UpdateSnippetResponse.from(snippet)) }
 
     @DeleteMapping("/{snippetId}")
     fun delete(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
     ): ResponseEntity<*> =
         deleteSnippet
-            .execute(snippetId)
+            .execute(id = snippetId, userId = userId)
             .respond { ResponseEntity.noContent().build<Void>() }
 
     @GetMapping("/{snippetId}/download")
     fun download(
+        @RequestHeader(USER_HEADER) userId: String,
         @PathVariable snippetId: UUID,
         @RequestParam(defaultValue = "original") version: String,
     ): ResponseEntity<*> =
@@ -199,7 +214,7 @@ class SnippetController(
             .toVariant(version)
             .flatMap { variant ->
                 downloadSnippet
-                    .execute(id = snippetId, variant = variant)
+                    .execute(id = snippetId, userId = userId, variant = variant)
                     .map { content -> variant to content }
             }.respond { (variant, content) ->
                 snippetDownloadMapper.toResponse(
@@ -214,4 +229,8 @@ class SnippetController(
             onSuccess = onSuccess,
             onFailure = errorMapper::toResponse,
         )
+
+    private companion object {
+        const val USER_HEADER = UserHeader.NAME
+    }
 }

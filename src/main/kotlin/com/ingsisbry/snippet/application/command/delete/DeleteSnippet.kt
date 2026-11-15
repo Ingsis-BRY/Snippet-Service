@@ -5,5 +5,8 @@ import com.ingsisbry.snippet.application.error.SnippetError
 import java.util.UUID
 
 interface DeleteSnippet {
-    fun execute(id: UUID): Result<SnippetError, Unit>
+    fun execute(
+        id: UUID,
+        userId: String,
+    ): Result<SnippetError, Unit>
 }

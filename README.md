@@ -34,7 +34,7 @@ Gradle properties).
 # build + tests + ktlint + detekt
 ./gradlew check
 
-# run everything (service, Postgres, Azurite)
+# run everything (service, Postgres, Azurite, permission service and its database)
 docker compose up --build
 ```
 
@@ -46,11 +46,19 @@ docker compose up --build
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database credentials |
 | `AZURE_STORAGE_CONNECTION_STRING` | Blob storage connection string (Azurite or real Azure) |
 | `AZURITE_PORT` | Host port for Azurite's blob endpoint |
+| `PERMISSION_POSTGRES_DB`, `PERMISSION_POSTGRES_USER`, `PERMISSION_POSTGRES_PASSWORD` | Permission database credentials |
+| `PERMISSION_SERVICE_IMAGE` | Optional, defaults to `ghcr.io/ingsis-bry/snippet-permission-service:latest` |
 | `USERNAME`, `TOKEN` | GitHub Packages credentials, used as Docker build secrets |
+
+The service itself reads `PERMISSION_SERVICE_URL` (default `http://snippet-permission-service:8080`, the
+service name inside the Swarm and compose networks).
 
 Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *`, daily at 03:00).
 
 ## API
+
+Every endpoint requires the `X-User-Id` header with the caller's id. It is a temporary identity until
+Auth0 is integrated, when it will be replaced by the `sub` claim of the JWT. A missing header is a `400`.
 
 | Method | Path | Description |
 | --- | --- | --- |
@@ -64,6 +72,18 @@ Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *
 | `POST` | `/snippets/upload` | Create a snippet from an uploaded file. `multipart/form-data` with `name`, `description`, `language`, `languageVersion` and `file`. Returns `201` with the id. |
 | `PUT` | `/snippets/{id}/upload` | Replace name/description/language/content from an uploaded file. Same form fields as above; creates a new version. |
 | `PATCH` | `/snippets/{id}/upload` | Replace only the content from an uploaded file. `multipart/form-data` with `file`; creates a new version, other fields are kept. |
+| `POST` | `/snippets/{id}/share` | Share the snippet with another user (body `{"targetUserId": ...}`). Only the owner. Returns `204`. |
+
+Who can do what is decided by `snippet-permission-service`:
+
+| Endpoint | Required permission |
+| --- | --- |
+| Create (JSON or file) | none; the caller becomes the `OWNER` |
+| Get, download | `READ` (owner or shared with) |
+| Update, patch (JSON or file) | `WRITE` (owner) |
+| Delete | `DELETE` (owner) |
+| Share | `SHARE` (owner) |
+| List | only snippets the caller can access; `relationship=OWNED\|SHARED\|ALL` |
 
 - The three `/upload` endpoints exist because the assignment's user stories #1 and #2 require creating and
 updating snippets through file uploads. 
@@ -77,11 +97,12 @@ validation and versioning apply.
 com.ingsisbry.snippet
 ├── domain/                     Snippet, SnippetVersion, SnippetRules   (pure Kotlin)
 ├── application/
-│   ├── command/                create, update, delete, cleanup         (write side use cases)
+│   ├── command/                create, update, delete, share, cleanup  (write side use cases)
 │   ├── query/                  get, list, download                     (read side use cases)
 │   ├── port/out/               SnippetRepository, SnippetQueryRepository,
 │   │                           SnippetContentStorage, SnippetFilterValidator,
-│   │                           SupportedLanguages, SnippetContentValidator
+│   │                           SupportedLanguages, SnippetContentValidator,
+│   │                           SnippetPermissions
 │   ├── error/                  sealed SnippetError
 │   └── common/                 Result, PageResult
 └── adapter/
@@ -89,6 +110,7 @@ com.ingsisbry.snippet
     ├── persistence/            JPA entities, repositories, filters, specifications
     ├── storage/azure/          blob storage adapter
     ├── language/               placeholder language service adapter
+    ├── permission/             HTTP client for snippet-permission-service
     ├── scheduling/             orphan cleanup job
     └── configuration/          Clock bean, scheduling
 ```
@@ -373,6 +395,8 @@ Errors are values (section 4) and flow outward through three stages:
    - JPA: `DataIntegrityViolationException` → `SnippetConflict`; other `RuntimeException` →
      `PersistenceUnavailable`.
    - Azure: 404 on retrieve → `ContentMissing`; any other SDK failure → `ContentStoreUnavailable`.
+   - Permission service: 400 → `InvalidInput`, 403 → `AccessDenied`, 409 → `AlreadyShared` (share) or
+     `SnippetConflict` (owner registration); anything else, timeouts included → `PermissionServiceUnavailable`.
    - Raw exception messages are logged, never returned to clients.
 2. **Use cases combine and propagate them** with `flatMap`/`map`, and own the compensation logic.
 3. **`SnippetErrorMapper` maps each error to an HTTP status** in one place, as RFC 7807 `ProblemDetail`:
@@ -382,11 +406,14 @@ Errors are values (section 4) and flow outward through three stages:
 | `InvalidInput` | 400 | Bad request data, bad filter, bad parameter |
 | `UnsupportedLanguage` | 400 | The language or its version isn't supported |
 | `InvalidSnippetContent` | 400 | Content breaks a language rule; the message includes rule, line and column |
+| `AccessDenied` | 403 | The caller can't perform that action, or the snippet doesn't exist for them |
 | `SnippetNotFound` | 404 | No such snippet |
 | `SnippetConflict` | 409 | Constraint violation, e.g. a concurrent update |
+| `AlreadyShared` | 409 | The snippet is already shared with that user |
 | `ContentStoreUnavailable` | 503 | Blob storage failed or timed out |
 | `PersistenceUnavailable` | 503 | Database failed |
 | `LanguageServiceUnavailable` | 503 | The language service failed or timed out |
+| `PermissionServiceUnavailable` | 503 | The permission service failed, timed out or answered unexpectedly |
 | `ContentMissing` | 500 | A row references a blob that doesn't exist (our bug / data loss) |
 | `SnippetCorrupted` | 500 | Row points at a missing version (inconsistent data) |
 
@@ -498,7 +525,29 @@ content is at most 1,000,000 characters.
 - The 503 mapping makes that failure explicit.
 - Two ports means two calls. They could be merged if the service ends up exposing a single endpoint.
 
-### 13. Smaller decisions
+### 13. Permissions live in another service
+
+Who owns a snippet and who it was shared with belong to `snippet-permission-service`, with its own database.
+This service only asks it, through the `SnippetPermissions` port and an HTTP adapter.
+
+- **Check before touching anything.** Every use case authorizes first, so a denied request never reads the
+  database or the blob store.
+- **403 instead of 404.** The permission is checked before the snippet is loaded, so a user without access
+  gets `403` whether or not the snippet exists. Ids of other users' snippets are not revealed.
+- **Create registers the owner after saving.** If the registration fails, the snippet and its blob are
+  deleted (best effort, logged). Otherwise it would exist with nobody able to access it.
+- **Delete removes the permissions last.** The snippet is deleted first; if the permissions can't be
+  removed it is only logged. A leftover permission points at a snippet that no longer exists, which is
+  harmless: lists only return snippets that exist in this database.
+- **Listing asks for ids, filtering stays here.** The permission service returns the ids the user can
+  access for the requested relationship, and the query adds `id IN (...)` to the filters, sorting and
+  pagination of this service. Our `OWNED` maps to its `OWNER`.
+- **Fail fast.** The HTTP client has a 2 s connect and 5 s read timeout; a slow permission service turns into
+  a `503` instead of holding request threads.
+- **Not exposed publicly.** Only this service talks to the permission service, inside the stack network.
+  The UI shares snippets through `POST /snippets/{id}/share`.
+
+### 14. Smaller decisions
 
 - **Immutable versions.** Editing never modifies a version; it creates a new one with a new blob. This is
   what makes blob keys safe and history trustworthy, at the price of storage growth (there is no version
@@ -520,9 +569,12 @@ content is at most 1,000,000 characters.
 
 We would rather list these than have them discovered:
 
-- **No authentication or authorization.** The owner is hard-coded (`Anonymous` on create, `anonymous` on
-  list); anyone with a snippet id can read, change or delete it. `relationship=OWNED` behaves like `ALL`,
-  and `SHARED` always returns an empty page.
+- **No authentication yet.** The caller is whoever the `X-User-Id` header says, so anyone who can reach the
+  service can impersonate another user. Auth0 (JWT validation) will close this; the use cases won't change.
+- **No unshare endpoint.** The permission service supports revoking a share, but this service doesn't expose
+  it yet.
+- **Large `IN` lists.** Listing sends every accessible id in one query; fine for the expected volume, not for
+  users with tens of thousands of snippets.
 - **Language checks are a placeholder.** `PermissiveLanguageServiceAdapter` accepts every language and every
   content, so unsupported languages and invalid snippets are not rejected yet. They will be once an adapter
   for the language service replaces it.
@@ -544,10 +596,14 @@ We would rather list these than have them discovered:
 ## Testing
 
 - **Domain:** `Snippet`, `SnippetVersion`, `SnippetRules` tested as plain unit tests.
-- **Application:** every use case is tested with Mockito-mocked ports, which is why the ports exist:
+- **Application:** every use case is tested with Mockito-mocked ports and an in-memory
+  `FakeSnippetPermissions`, which is why the ports exist. Each one checks that a denied request touches
+  nothing:
   success, not-found, storage failure, DB failure with blob cleanup, conflict, and invalid input (asserting
   nothing downstream is called).
-- **Adapters:** controller, error mapper, query factory and the filter registry are covered in isolation.
+- **Adapters:** controllers, error mapper, query factory and the filter registry are covered in isolation.
+  The permission adapter is tested against `MockRestServiceServer` (requests sent, and every answer mapped
+  to its error).
   `embedded-azurite` is available on the test classpath for running the Azure adapter against a real
   emulator.
 - **Quality gates:** `./gradlew check` runs the tests plus ktlint and detekt; CI runs it on every pull

@@ -82,7 +82,7 @@ class DownloadSnippetEndpointTest {
             .thenReturn(Result.Success(variant))
 
         Mockito
-            .`when`(downloadSnippet.execute(snippetId, variant))
+            .`when`(downloadSnippet.execute(snippetId, "test-user", variant))
             .thenReturn(Result.Success(content))
 
         Mockito
@@ -94,11 +94,11 @@ class DownloadSnippetEndpointTest {
                 ),
             ).thenReturn(expectedResponse)
 
-        val response = controller.download(snippetId, "original")
+        val response = controller.download("test-user", snippetId, "original")
 
         assertEquals(expectedResponse, response)
 
-        Mockito.verify(downloadSnippet).execute(snippetId, variant)
+        Mockito.verify(downloadSnippet).execute(snippetId, "test-user", variant)
     }
 
     @Test
@@ -111,10 +111,10 @@ class DownloadSnippetEndpointTest {
             .thenReturn(Result.Success(variant))
 
         Mockito
-            .`when`(downloadSnippet.execute(snippetId, variant))
+            .`when`(downloadSnippet.execute(snippetId, "test-user", variant))
             .thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
-        val response = controller.download(snippetId, "original")
+        val response = controller.download("test-user", snippetId, "original")
 
         assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
 
@@ -133,7 +133,7 @@ class DownloadSnippetEndpointTest {
             .`when`(snippetDownloadMapper.toVariant("pdf"))
             .thenReturn(Result.Failure(InvalidInput("Unsupported snippet content variant: pdf")))
 
-        val response = controller.download(snippetId, "pdf")
+        val response = controller.download("test-user", snippetId, "pdf")
 
         assertEquals(HttpStatus.BAD_REQUEST, response.statusCode)
 

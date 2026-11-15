@@ -1,6 +1,7 @@
 package com.ingsisbry.snippet.application.command.update
 
 import com.ingsisbry.snippet.application.common.result.Result
+import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
@@ -16,6 +17,7 @@ import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.support.FakeSnippetPermissions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -47,6 +49,8 @@ class UpdateSnippetUseCaseTest {
     private var languageCheck: Result<SnippetError, Unit> = Result.Success(Unit)
     private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
 
+    private val permissions = FakeSnippetPermissions()
+
     @BeforeEach
     fun setUp() {
         useCase =
@@ -56,8 +60,20 @@ class UpdateSnippetUseCaseTest {
                 contentStorage = contentStorage,
                 supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
                 contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
+                permissions = permissions,
                 clock = Clock.fixed(NOW, ZoneOffset.UTC),
             )
+    }
+
+    @Test
+    fun `execute should deny the update without touching anything when the user cannot write`() {
+        val id = UUID.randomUUID()
+        permissions.allowed = false
+
+        val result = useCase.execute(updateCommand(id))
+
+        assertEquals(Result.Failure(AccessDenied(id, "test-user")), result)
+        Mockito.verifyNoInteractions(snippetQueryRepository, snippetRepository, contentStorage)
     }
 
     @Test
@@ -254,6 +270,7 @@ class UpdateSnippetUseCaseTest {
     private fun updateCommand(snippetId: UUID) =
         UpdateSnippetCommand(
             id = snippetId,
+            userId = "test-user",
             name = "Updated name",
             description = "Updated description",
             language = "Java",

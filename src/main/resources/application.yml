@@ -8,3 +8,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: update
+
+permission-service:
+  url: "${PERMISSION_SERVICE_URL:http://snippet-permission-service:8080}"

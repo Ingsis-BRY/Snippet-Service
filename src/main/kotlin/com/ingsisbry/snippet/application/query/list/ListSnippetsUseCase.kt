@@ -4,6 +4,7 @@ import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.port.out.permission.SnippetPermissions
 import com.ingsisbry.snippet.application.port.out.query.SnippetFilterValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import org.springframework.stereotype.Service
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service
 class ListSnippetsUseCase(
     private val snippetQueryRepository: SnippetQueryRepository,
     private val filterValidator: SnippetFilterValidator,
+    private val permissions: SnippetPermissions,
 ) : ListSnippets {
     override fun execute(query: ListSnippetsQuery): Result<SnippetError, PageResult<SnippetListItem>> {
         val violation =
@@ -24,7 +26,10 @@ class ListSnippetsUseCase(
         return if (violation != null) {
             Result.Failure(InvalidInput(violation))
         } else {
-            filterValidator.validate(query.filters).map { snippetQueryRepository.findAll(query) }
+            filterValidator
+                .validate(query.filters)
+                .flatMap { permissions.accessibleSnippetIds(query.user, query.relationship) }
+                .map { snippetIds -> snippetQueryRepository.findAll(query, snippetIds) }
         }
     }
 

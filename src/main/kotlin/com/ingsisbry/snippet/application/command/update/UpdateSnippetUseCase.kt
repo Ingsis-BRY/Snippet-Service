@@ -7,6 +7,9 @@ import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
+import com.ingsisbry.snippet.application.port.out.permission.SnippetAction
+import com.ingsisbry.snippet.application.port.out.permission.SnippetPermissions
+import com.ingsisbry.snippet.application.port.out.permission.authorize
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
@@ -24,6 +27,7 @@ class UpdateSnippetUseCase(
     private val contentStorage: SnippetContentStorage,
     private val supportedLanguages: SupportedLanguages,
     private val contentValidator: SnippetContentValidator,
+    private val permissions: SnippetPermissions,
     private val clock: Clock,
 ) : UpdateSnippet {
     override fun execute(command: UpdateSnippetCommand): Result<SnippetError, Snippet> {
@@ -39,8 +43,9 @@ class UpdateSnippetUseCase(
         return if (violation != null) {
             Result.Failure(InvalidInput(violation))
         } else {
-            supportedLanguages
-                .check(command.language, command.languageVersion)
+            permissions
+                .authorize(command.id, command.userId, SnippetAction.WRITE)
+                .flatMap { supportedLanguages.check(command.language, command.languageVersion) }
                 .flatMap { contentValidator.validate(command.language, command.languageVersion, command.content) }
                 .flatMap { snippetQueryRepository.findMetadataById(command.id) }
                 .flatMap { existing -> store(command, existing) }

@@ -9,7 +9,11 @@ import com.ingsisbry.snippet.domain.Snippet
 import java.util.UUID
 
 interface SnippetQueryRepository {
-    fun findAll(query: ListSnippetsQuery): PageResult<SnippetListItem>
+    /** Lists, among [snippetIds], the snippets that match the filters of [query]. */
+    fun findAll(
+        query: ListSnippetsQuery,
+        snippetIds: Set<UUID>,
+    ): PageResult<SnippetListItem>
 
     /** Loads the snippet including its content from the content store. */
     fun findById(id: UUID): Result<SnippetError, Snippet>
