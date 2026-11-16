@@ -9,5 +9,18 @@ spring:
     hibernate:
       ddl-auto: update
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "https://${AUTH0_DOMAIN}/"
+          audiences: "${AUTH0_AUDIENCE}"
+
+auth0:
+  domain: "${AUTH0_DOMAIN}"
+  management:
+    client-id: "${AUTH0_M2M_CLIENT_ID}"
+    client-secret: "${AUTH0_M2M_CLIENT_SECRET}"
+
 permission-service:
   url: "${PERMISSION_SERVICE_URL:http://snippet-permission-service:8080}"

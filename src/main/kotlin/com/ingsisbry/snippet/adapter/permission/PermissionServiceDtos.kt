@@ -4,7 +4,6 @@ import java.util.UUID
 
 internal data class GrantOwnerRequest(
     val snippetId: UUID,
-    val userId: String,
 )
 
 internal data class ShareRequest(

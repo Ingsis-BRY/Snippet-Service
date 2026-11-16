@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.web
 
+import com.ingsisbry.snippet.adapter.security.CurrentUserId
 import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
 import com.ingsisbry.snippet.adapter.web.dto.request.CreateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetContentRequest
@@ -34,7 +35,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
@@ -58,7 +58,7 @@ class SnippetController(
 ) {
     @PostMapping
     fun create(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @RequestBody request: CreateSnippetRequest,
     ): ResponseEntity<*> =
         createSnippet
@@ -79,7 +79,7 @@ class SnippetController(
 
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun createFromFile(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @RequestParam name: String,
         @RequestParam description: String,
         @RequestParam language: String,
@@ -107,7 +107,7 @@ class SnippetController(
 
     @GetMapping
     fun list(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @RequestParam parameters: Map<String, String>,
     ): ResponseEntity<*> =
         queryFactory
@@ -119,7 +119,7 @@ class SnippetController(
 
     @GetMapping("/{snippetId}")
     fun get(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
     ): ResponseEntity<*> =
         getSnippet
@@ -128,7 +128,7 @@ class SnippetController(
 
     @PutMapping("/{snippetId}")
     fun update(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestBody request: UpdateSnippetRequest,
     ): ResponseEntity<*> =
@@ -147,7 +147,7 @@ class SnippetController(
 
     @PutMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun updateFromFile(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestParam name: String,
         @RequestParam description: String,
@@ -173,7 +173,7 @@ class SnippetController(
 
     @PatchMapping("/{snippetId}")
     fun updateContent(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestBody request: UpdateSnippetContentRequest,
     ): ResponseEntity<*> =
@@ -183,7 +183,7 @@ class SnippetController(
 
     @PatchMapping("/{snippetId}/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun updateContentFromFile(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestPart file: MultipartFile,
     ): ResponseEntity<*> =
@@ -197,7 +197,7 @@ class SnippetController(
 
     @DeleteMapping("/{snippetId}")
     fun delete(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
     ): ResponseEntity<*> =
         deleteSnippet
@@ -206,7 +206,7 @@ class SnippetController(
 
     @GetMapping("/{snippetId}/download")
     fun download(
-        @RequestHeader(USER_HEADER) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestParam(defaultValue = "original") version: String,
     ): ResponseEntity<*> =
@@ -229,8 +229,4 @@ class SnippetController(
             onSuccess = onSuccess,
             onFailure = errorMapper::toResponse,
         )
-
-    private companion object {
-        const val USER_HEADER = UserHeader.NAME
-    }
 }

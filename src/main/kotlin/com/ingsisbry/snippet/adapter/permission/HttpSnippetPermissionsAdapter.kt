@@ -11,6 +11,7 @@ import com.ingsisbry.snippet.application.port.out.permission.SnippetAction
 import com.ingsisbry.snippet.application.port.out.permission.SnippetPermissions
 import com.ingsisbry.snippet.application.query.list.SnippetRelationship
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
@@ -22,6 +23,7 @@ import java.util.UUID
 /** Talks to snippet-permission-service over HTTP inside the stack network. */
 @Component
 class HttpSnippetPermissionsAdapter(
+    @param:Qualifier("permissionServiceClient")
     private val permissionServiceClient: RestClient,
 ) : SnippetPermissions {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -35,7 +37,7 @@ class HttpSnippetPermissionsAdapter(
                 .post()
                 .uri("/permissions/owner")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(GrantOwnerRequest(snippetId, userId))
+                .body(GrantOwnerRequest(snippetId))
                 .retrieve()
                 .toBodilessEntity()
         }.map { }
@@ -52,7 +54,6 @@ class HttpSnippetPermissionsAdapter(
                     uri
                         .path("/permissions/check")
                         .queryParam("snippetId", snippetId)
-                        .queryParam("userId", userId)
                         .queryParam("action", action.name)
                         .build()
                 }.retrieve()
@@ -69,7 +70,6 @@ class HttpSnippetPermissionsAdapter(
                 .uri { uri ->
                     uri
                         .path("/permissions/snippets")
-                        .queryParam("userId", userId)
                         .queryParam("relationship", relationship.toPermissionRelationship())
                         .build()
                 }.retrieve()
@@ -85,7 +85,6 @@ class HttpSnippetPermissionsAdapter(
             permissionServiceClient
                 .post()
                 .uri("/permissions/share")
-                .header(USER_HEADER, ownerId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(ShareRequest(snippetId, targetUserId))
                 .retrieve()
@@ -100,7 +99,6 @@ class HttpSnippetPermissionsAdapter(
             permissionServiceClient
                 .delete()
                 .uri("/permissions/snippets/{snippetId}", snippetId)
-                .header(USER_HEADER, requesterId)
                 .retrieve()
                 .toBodilessEntity()
         }.map { }
@@ -151,8 +149,4 @@ class HttpSnippetPermissionsAdapter(
             SnippetRelationship.SHARED -> "SHARED"
             SnippetRelationship.ALL -> "ALL"
         }
-
-    private companion object {
-        const val USER_HEADER = "X-User-Id"
-    }
 }
