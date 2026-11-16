@@ -547,7 +547,21 @@ This service only asks it, through the `SnippetPermissions` port and an HTTP ada
 - **Not exposed publicly.** Only this service talks to the permission service, inside the stack network.
   The UI shares snippets through `POST /snippets/{id}/share`.
 
-### 14. Smaller decisions
+### 14. Monitoring with New Relic
+
+Each microservice runs as an independent application, with its own JVM, lifecycle and failure points. For this reason, the New Relic Java Agent is configured separately in each service rather than relying on a single monitoring agent for the entire stack.
+
+The Java Agent instruments the application at runtime without requiring changes to the application code. It collects telemetry such as:
+
+- **Application performance:** request latency, throughput and transaction metrics.
+- **Errors:** exceptions and failed transactions.
+- **Distributed tracing:** follows requests across service boundaries, helping identify where latency or failures originate.
+
+Having the agent in every microservice provides visibility into each service independently while allowing us to correlate activity across the system. This is particularly useful when troubleshooting failures involving communication between services.
+
+The agent is downloaded during the Docker image build and attached to the JVM when the container starts. Each service reports its telemetry to the same New Relic account, providing a centralized view of the application.
+
+### 15. Smaller decisions
 
 - **Immutable versions.** Editing never modifies a version; it creates a new one with a new blob. This is
   what makes blob keys safe and history trustworthy, at the price of storage growth (there is no version
