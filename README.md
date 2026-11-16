@@ -48,6 +48,9 @@ docker compose up --build
 | `AZURITE_PORT` | Host port for Azurite's blob endpoint |
 | `PERMISSION_POSTGRES_DB`, `PERMISSION_POSTGRES_USER`, `PERMISSION_POSTGRES_PASSWORD` | Permission database credentials |
 | `PERMISSION_SERVICE_IMAGE` | Optional, defaults to `ghcr.io/ingsis-bry/snippet-permission-service:latest` |
+| `AUTH0_DOMAIN`, `AUTH0_AUDIENCE` | Auth0 tenant and API identifier, for this service and the permission service |
+| `AUTH0_M2M_CLIENT_ID`, `AUTH0_M2M_CLIENT_SECRET` | Machine-to-machine app allowed to read users (`read:users`), for the user search |
+| `AUTH0_CLI_CLIENT_ID` | Only for `scripts/get-token.mjs`: the native test app |
 | `USERNAME`, `TOKEN` | GitHub Packages credentials, used as Docker build secrets |
 
 The service itself reads `PERMISSION_SERVICE_URL` (default `http://snippet-permission-service:8080`, the
@@ -55,10 +58,32 @@ service name inside the Swarm and compose networks).
 
 Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *`, daily at 03:00).
 
+The `.env` file is gitignored; never commit it, because it holds the machine-to-machine secret.
+
+### Getting an access token
+
+`scripts/get-token.mjs` opens the Auth0 login page, logs in with Authorization Code + PKCE through the
+`Snippet Searcher CLI (tests)` application and prints the access token (Node 20+, reads `.env`):
+
+```bash
+TOKEN=$(node scripts/get-token.mjs)                    # read:snippets write:snippets
+curl -H "Authorization: Bearer $TOKEN" localhost:8080/snippets
+```
+
+```powershell
+$env:TOKEN = node scripts/get-token.mjs
+curl.exe -H "Authorization: Bearer $env:TOKEN" localhost:8080/snippets
+```
+
 ## API
 
-Every endpoint requires the `X-User-Id` header with the caller's id. It is a temporary identity until
-Auth0 is integrated, when it will be replaced by the `sub` claim of the JWT. A missing header is a `400`.
+Every endpoint requires an Auth0 access token for the API `https://snippet-searcher-api`, in
+`Authorization: Bearer <token>`. The signature, issuer, audience and expiry are validated; the caller is
+the token's `sub` (for example `auth0|6afb5dfa6b2193fbf0b82627`).
+
+- `GET` endpoints need the `read:snippets` scope, everything else `write:snippets`. Both come from the
+  Auth0 role `snippet-user`.
+- Without a valid token the answer is `401`; with a token that lacks the scope, `403`.
 
 | Method | Path | Description |
 | --- | --- | --- |
@@ -72,7 +97,8 @@ Auth0 is integrated, when it will be replaced by the `sub` claim of the JWT. A m
 | `POST` | `/snippets/upload` | Create a snippet from an uploaded file. `multipart/form-data` with `name`, `description`, `language`, `languageVersion` and `file`. Returns `201` with the id. |
 | `PUT` | `/snippets/{id}/upload` | Replace name/description/language/content from an uploaded file. Same form fields as above; creates a new version. |
 | `PATCH` | `/snippets/{id}/upload` | Replace only the content from an uploaded file. `multipart/form-data` with `file`; creates a new version, other fields are kept. |
-| `POST` | `/snippets/{id}/share` | Share the snippet with another user (body `{"targetUserId": ...}`). Only the owner. Returns `204`. |
+| `POST` | `/snippets/{id}/share` | Share the snippet with another user (body `{"targetUserId": "auth0\|..."}`). Only the owner. Returns `204`. |
+| `GET` | `/users?name=&page=0&size=10` | Users to share with (#7): name or email contains `name` (prefix if shorter than 3 characters), never the caller. Returns `{users: [{id, name}], page, size, total}`. |
 
 Who can do what is decided by `snippet-permission-service`:
 
@@ -98,11 +124,11 @@ com.ingsisbry.snippet
 ├── domain/                     Snippet, SnippetVersion, SnippetRules   (pure Kotlin)
 ├── application/
 │   ├── command/                create, update, delete, share, cleanup  (write side use cases)
-│   ├── query/                  get, list, download                     (read side use cases)
+│   ├── query/                  get, list, download, user search        (read side use cases)
 │   ├── port/out/               SnippetRepository, SnippetQueryRepository,
 │   │                           SnippetContentStorage, SnippetFilterValidator,
 │   │                           SupportedLanguages, SnippetContentValidator,
-│   │                           SnippetPermissions
+│   │                           SnippetPermissions, UserDirectory
 │   ├── error/                  sealed SnippetError
 │   └── common/                 Result, PageResult
 └── adapter/
@@ -111,6 +137,8 @@ com.ingsisbry.snippet
     ├── storage/azure/          blob storage adapter
     ├── language/               placeholder language service adapter
     ├── permission/             HTTP client for snippet-permission-service
+    ├── auth0/                  user search in the Auth0 Management API
+    ├── security/               JWT validation, scopes, current user, token forwarding
     ├── scheduling/             orphan cleanup job
     └── configuration/          Clock bean, scheduling
 ```
@@ -414,6 +442,7 @@ Errors are values (section 4) and flow outward through three stages:
 | `PersistenceUnavailable` | 503 | Database failed |
 | `LanguageServiceUnavailable` | 503 | The language service failed or timed out |
 | `PermissionServiceUnavailable` | 503 | The permission service failed, timed out or answered unexpectedly |
+| `UserDirectoryUnavailable` | 503 | The Auth0 Management API failed, timed out or rejected the M2M token |
 | `ContentMissing` | 500 | A row references a blob that doesn't exist (our bug / data loss) |
 | `SnippetCorrupted` | 500 | Row points at a missing version (inconsistent data) |
 
@@ -547,7 +576,32 @@ This service only asks it, through the `SnippetPermissions` port and an HTTP ada
 - **Not exposed publicly.** Only this service talks to the permission service, inside the stack network.
   The UI shares snippets through `POST /snippets/{id}/share`.
 
-### 14. Monitoring with New Relic
+### 14. Authentication with Auth0
+
+Users log in with Auth0 (Authorization Code + PKCE in the UI) and every request carries their access token.
+Auth0 answers *who* the user is and what the app may do (scopes); `snippet-permission-service` keeps
+answering *which snippets* they can touch. It is the "RBAC for the app, ACL for the resources" split from the
+course.
+
+- **Validation by configuration.** `issuer-uri` and `audiences` in `application.yml` make Spring check the
+  signature (keys downloaded from the tenant on the first request), `iss`, `aud` and `exp`. There is no
+  custom decoder to get wrong.
+- **Scopes per HTTP method.** Reads need `read:snippets`, writes `write:snippets`, in one rule in
+  `SecurityConfiguration` instead of an annotation per endpoint.
+- **The use cases don't know about tokens.** Controllers receive the user through `@CurrentUserId`, resolved
+  from the token's `sub`. Replacing the old `X-User-Id` header changed no use case.
+- **The token travels to the permission service.** `BearerTokenForwarder` adds the user's token to every call,
+  and the permission service validates it again and takes the user from it. A service in the stack network
+  can't act for a user without that user's token.
+- **User search with a machine-to-machine token.** #7 needs every user, which only the Management API knows.
+  Its client secret can't live in the browser, so the search is `GET /users` here. The M2M token is cached
+  until a minute before it expires, and forgotten if Auth0 rejects it. Only ids and names are returned:
+  emails are used to match, never shown to other users.
+- **The query can't be injected.** The user's text is escaped before it goes into Auth0's Lucene query.
+  Shorter than 3 characters it is matched as a prefix, because Auth0 refuses leading wildcards on shorter
+  terms.
+
+### 15. Monitoring with New Relic
 
 Each microservice runs as an independent application, with its own JVM, lifecycle and failure points. For this reason, the New Relic Java Agent is configured separately in each service rather than relying on a single monitoring agent for the entire stack.
 
@@ -561,7 +615,7 @@ Having the agent in every microservice provides visibility into each service ind
 
 The agent is downloaded during the Docker image build and attached to the JVM when the container starts. Each service reports its telemetry to the same New Relic account, providing a centralized view of the application.
 
-### 15. Smaller decisions
+### 16. Smaller decisions
 
 - **Immutable versions.** Editing never modifies a version; it creates a new one with a new blob. This is
   what makes blob keys safe and history trustworthy, at the price of storage growth (there is no version
@@ -583,8 +637,10 @@ The agent is downloaded during the Docker image build and attached to the JVM wh
 
 We would rather list these than have them discovered:
 
-- **No authentication yet.** The caller is whoever the `X-User-Id` header says, so anyone who can reach the
-  service can impersonate another user. Auth0 (JWT validation) will close this; the use cases won't change.
+- **Scheduled work has no user token.** The orphan cleanup doesn't call the permission service, so it is not
+  affected, but any future background job that needs it will need its own machine-to-machine token.
+- **The author is shown as an Auth0 id.** Snippets store the owner's `sub` (`auth0|...`); showing the
+  owner's name would need a lookup in the user directory when listing.
 - **No unshare endpoint.** The permission service supports revoking a share, but this service doesn't expose
   it yet.
 - **Large `IN` lists.** Listing sends every accessible id in one query; fine for the expected volume, not for
@@ -616,8 +672,10 @@ We would rather list these than have them discovered:
   success, not-found, storage failure, DB failure with blob cleanup, conflict, and invalid input (asserting
   nothing downstream is called).
 - **Adapters:** controllers, error mapper, query factory and the filter registry are covered in isolation.
-  The permission adapter is tested against `MockRestServiceServer` (requests sent, and every answer mapped
-  to its error).
+  The permission adapter is tested against `MockRestServiceServer` (requests sent, the forwarded token, and
+  every answer mapped to its error), and so are the Auth0 user search and the M2M token cache.
+- **Security:** `SecurityConfigurationTest` (`@WebMvcTest` with mock JWTs) checks `401` without a token,
+  `403` without the scope, and that the caller is the token's `sub`.
   `embedded-azurite` is available on the test classpath for running the Azure adapter against a real
   emulator.
 - **Quality gates:** `./gradlew check` runs the tests plus ktlint and detekt; CI runs it on every pull
