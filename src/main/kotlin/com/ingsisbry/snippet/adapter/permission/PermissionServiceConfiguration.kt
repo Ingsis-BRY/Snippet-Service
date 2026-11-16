@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.permission
 
+import com.ingsisbry.snippet.adapter.security.BearerTokenForwarder
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -17,6 +18,7 @@ class PermissionServiceConfiguration {
         RestClient
             .builder()
             .baseUrl(baseUrl)
+            .requestInterceptor(BearerTokenForwarder())
             // Fail fast instead of hanging a request thread when the permission service is down.
             .requestFactory(
                 SimpleClientHttpRequestFactory().apply {

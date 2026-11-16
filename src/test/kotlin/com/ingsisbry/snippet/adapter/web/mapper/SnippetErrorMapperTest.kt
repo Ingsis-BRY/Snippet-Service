@@ -14,6 +14,7 @@ import com.ingsisbry.snippet.application.error.SnippetCorrupted
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
+import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -41,6 +42,7 @@ class SnippetErrorMapperTest {
                 AccessDenied(id, "intruder") to HttpStatus.FORBIDDEN,
                 AlreadyShared(id, "enzo") to HttpStatus.CONFLICT,
                 PermissionServiceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
+                UserDirectoryUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
             )
 
         expected.forEach { (error, status) ->

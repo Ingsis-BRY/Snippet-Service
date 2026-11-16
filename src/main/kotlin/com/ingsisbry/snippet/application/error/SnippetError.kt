@@ -73,3 +73,8 @@ data class AlreadyShared(
 data class PermissionServiceUnavailable(
     val reason: String?,
 ) : SnippetError
+
+/** The user directory (Auth0) could not complete the search. */
+data class UserDirectoryUnavailable(
+    val reason: String?,
+) : SnippetError

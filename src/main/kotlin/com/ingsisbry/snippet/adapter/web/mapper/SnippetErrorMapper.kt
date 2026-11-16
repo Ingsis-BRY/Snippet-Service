@@ -14,6 +14,7 @@ import com.ingsisbry.snippet.application.error.SnippetCorrupted
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
+import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component
 
 @Component
 class SnippetErrorMapper {
+    @Suppress("CyclomaticComplexMethod")
     fun toResponse(error: SnippetError): ResponseEntity<ProblemDetail> {
         val (status, detail) =
             when (error) {
@@ -33,6 +35,8 @@ class SnippetErrorMapper {
                     HttpStatus.CONFLICT to "Snippet ${error.snippetId} is already shared with ${error.userId}"
                 is PermissionServiceUnavailable ->
                     HttpStatus.SERVICE_UNAVAILABLE to "Permission service is unavailable"
+                is UserDirectoryUnavailable ->
+                    HttpStatus.SERVICE_UNAVAILABLE to "User directory is unavailable"
                 is InvalidSnippetContent ->
                     HttpStatus.BAD_REQUEST to
                         "Snippet breaks the rule '${error.rule}' at line ${error.line}, column ${error.column}"

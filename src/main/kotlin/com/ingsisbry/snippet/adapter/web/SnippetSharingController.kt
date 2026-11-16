@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.web
 
+import com.ingsisbry.snippet.adapter.security.CurrentUserId
 import com.ingsisbry.snippet.adapter.web.dto.request.ShareSnippetRequest
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.share.ShareSnippet
@@ -8,7 +9,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -21,7 +21,7 @@ class SnippetSharingController(
 ) {
     @PostMapping
     fun share(
-        @RequestHeader(UserHeader.NAME) userId: String,
+        @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
         @RequestBody request: ShareSnippetRequest,
     ): ResponseEntity<*> =
