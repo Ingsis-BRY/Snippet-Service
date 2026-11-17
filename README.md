@@ -37,11 +37,22 @@ Gradle properties).
 # local settings: copy the template, then fill in the Auth0 M2M credentials
 cp .env.example .env
 
+# 1. the language engine first: its compose creates the `snippet-searcher` network and the
+#    `engine-proxy` this service validates and runs code through
+(cd ../printscript-engine && GITHUB_ACTOR=<github-user> GITHUB_TOKEN=<github-token-with-read:packages> docker compose up -d --build)
+
 # GitHub Packages credentials for the image build (or set USERNAME / TOKEN in .env)
 export USERNAME=<github-user> TOKEN=<github-token-with-read:packages>
 
-# run everything (service, Postgres, Azurite, permission service and its database)
+# 2. everything else (service, Postgres, Azurite, permission service and its database)
 docker compose up --build
+```
+
+`docker compose up` fails with `network snippet-searcher declared as external, but could not be found` when
+the engine's compose isn't up. To check that the service reaches the engine:
+
+```bash
+docker compose exec snippet-service sh -c 'wget -qO- --header "X-Language: printscript" http://engine-proxy/versions'
 ```
 
 `USERNAME` and `TOKEN` are required for `docker compose up --build`: they become the `github_username` /
@@ -61,11 +72,13 @@ explicitly to your GitHub user.
 | `AUTH0_DOMAIN`, `AUTH0_AUDIENCE` | Auth0 tenant and API identifier, for this service and the permission service |
 | `AUTH0_M2M_CLIENT_ID`, `AUTH0_M2M_CLIENT_SECRET` | Machine-to-machine app allowed to read users (`read:users`), for the user search |
 | `AUTH0_CLI_CLIENT_ID` | Only for `scripts/get-token.mjs`: the native test app |
+| `ENGINE_URL` | Optional, defaults to `http://engine-proxy:80`, the engine proxy's service name in compose and Swarm. Outside Docker use `http://localhost:8081` |
 | `USERNAME`, `TOKEN` | GitHub Packages credentials, used as Docker build secrets |
 
 The service itself reads `PERMISSION_SERVICE_URL` (default `http://snippet-permission-service:8080`, the
-service name inside the Swarm and compose networks) and `DB_HOST` / `DB_PORT` (default `localhost:5432`, for
-running the jar outside Docker). The compose file sets `DB_HOST=postgres` so the container reaches the
+service name inside the Swarm and compose networks), `ENGINE_URL` (default `http://engine-proxy:80`; the
+WebSocket URL is derived from it, `http` → `ws`, `https` → `wss`) and `DB_HOST` / `DB_PORT` (default
+`localhost:5432`, for running the jar outside Docker). The compose file sets `DB_HOST=postgres` so the container reaches the
 compose database. Inside compose, `AZURE_STORAGE_CONNECTION_STRING` must use
 `BlobEndpoint=http://azurite:10000/devstoreaccount1`, as in `.env.example`.
 
@@ -111,6 +124,7 @@ the token's `sub` (for example `auth0|6afb5dfa6b2193fbf0b82627`).
 | `PUT` | `/snippets/{id}/upload` | Replace name/description/language/content from an uploaded file. Same form fields as above; creates a new version. |
 | `PATCH` | `/snippets/{id}/upload` | Replace only the content from an uploaded file. `multipart/form-data` with `file`; creates a new version, other fields are kept. |
 | `POST` | `/snippets/{id}/share` | Share the snippet with another user (body `{"targetUserId": "auth0\|..."}`). Only the owner. Returns `204`. |
+| `GET` | `/snippets/{id}/run` | **WebSocket.** Interactive run of the snippet's current version (#10). See [Interactive run](#interactive-run-websocket). |
 | `GET` | `/users?name=&page=0&size=10` | Users to share with (#7): name or email contains `name` (prefix if shorter than 3 characters), never the caller. Returns `{users: [{id, name}], page, size, total}`. |
 
 Who can do what is decided by `snippet-permission-service`:
@@ -118,7 +132,7 @@ Who can do what is decided by `snippet-permission-service`:
 | Endpoint | Required permission |
 | --- | --- |
 | Create (JSON or file) | none; the caller becomes the `OWNER` |
-| Get, download | `READ` (owner or shared with) |
+| Get, download, run (WebSocket) | `READ` (owner or shared with) |
 | Update, patch (JSON or file) | `WRITE` (owner) |
 | Delete | `DELETE` (owner) |
 | Share | `SHARE` (owner) |
@@ -130,25 +144,110 @@ updating snippets through file uploads.
 validation and versioning apply. 
 - The file must be non-empty UTF-8 text, otherwise the response is `400`.
 
+### Invalid code
+
+Create and update (`POST /snippets`, `POST /snippets/upload`, `PUT|PATCH /snippets/{id}` and
+`PUT|PATCH /snippets/{id}/upload`) ask the engine to validate the content first (#1-#4). Code that breaks a
+rule is rejected before anything is stored:
+
+```json
+HTTP/1.1 400  Content-Type: application/problem+json
+{
+  "title": "InvalidSnippetContent",
+  "status": 400,
+  "detail": "Snippet breaks the rule 'UnexpectedToken' at line 1, column 17: Expected an expression",
+  "instance": "/snippets",
+  "rule": "UnexpectedToken",
+  "message": "Expected an expression",
+  "span": { "start": { "line": 1, "column": 17 }, "end": { "line": 1, "column": 17 } }
+}
+```
+
+- Positions are 1-based and inclusive. `span` is `null` when the engine has no position (e.g. `NestingTooDeep`),
+  and then `detail` reads `Snippet breaks the rule '<rule>': <message>`.
+- `type` is left out, which means `about:blank` (RFC 9457).
+- A language or version the engine doesn't support is `400` with title `UnsupportedLanguage`.
+- An engine that can't be reached, or answers 502/503/504 twice, is `503` with detail
+  `"Language service is unavailable"`.
+
+### Interactive run (WebSocket)
+
+US #10. The browser opens `wss://<host>/api/snippets/{snippetId}/run`; nginx strips `/api`, so this service
+serves `/snippets/{snippetId}/run`. It relays the run to the engine's `/run/interactive` socket.
+
+**Handshake.** Browsers can't set `Authorization` on a WebSocket, so the token travels as a subprotocol:
+
+```js
+new WebSocket(url, ["snippet-run.v1", "bearer." + accessToken])
+```
+
+- The server answers `Sec-WebSocket-Protocol: snippet-run.v1`.
+- The token never appears in a URL, so it never reaches the nginx access or error logs.
+- A missing or invalid token, or one without `read:snippets`, is refused with `401`/`403` **before** the upgrade:
+  the browser sees `error` and then `close` 1006 without any `open`.
+- READ on the snippet is checked during the handshake, and its current content and `languageVersion` are
+  loaded then. **The client never sends code or a version.**
+
+**Client → server** (JSON text frames):
+
+| Message | Meaning |
+| --- | --- |
+| `{"type":"start"}` or `{"type":"start","mode":"interactive"}` | Starts a run. The first `start` opens the engine socket; after a `done`, another `start` re-runs on the same connection. Any other `mode` gets `rejected` / `MalformedMessage`. |
+| `{"type":"input","value":"<string>"}` | Answers the prompt. Answers sent early are queued by the engine. |
+
+**Server → client:**
+
+| Message | Source |
+| --- | --- |
+| `{"type":"output","line":"..."}` | Relayed from the engine. |
+| `{"type":"awaiting-input","prompt":"..."}` | Relayed from the engine. |
+| `{"type":"done","outputs":["..."],"error":null}` | Relayed from the engine; exactly one per run. `error` is `{rule, message, span}` (`span` can be `null`): a runtime error, `ExecutionTimeout`, `InputIdleTimeout`, `OutputLimitExceeded`, ... |
+| `{"type":"rejected","title":"...","detail":"...","properties":{}}` | From the engine (`RunInProgress`, `NoInteractiveRun`, `TooManyInputs`, `UnsupportedVersion`, ...) or from this service (`MalformedMessage`, `NoInteractiveRun` before any `start`). The connection stays open. |
+| `{"type":"error","status":403,"title":"AccessDenied","detail":"..."}` | From this service, **always followed by a close** with code `4000 + status` and the title as the reason. |
+
+| Condition | status / title | Close code |
+| --- | --- | --- |
+| No READ permission (or the snippet doesn't exist for the user) | 403 `AccessDenied` | 4403 |
+| Permission OK but the row is missing | 404 `SnippetNotFound` | 4404 |
+| The id is not a UUID | 400 `InvalidInput` | 4400 |
+| Engine unreachable or dropped; permission service, storage or DB down | 503 `LanguageServiceUnavailable` / `PermissionServiceUnavailable` / `ContentStoreUnavailable` / `PersistenceUnavailable` | 4503 |
+| `ContentMissing`, `SnippetCorrupted`, or an unexpected exception (`InternalError`) | 500 | 4500 |
+
+**Closing and timeouts.**
+- A client close (any code) closes the engine socket, which cancels the run. The UI closes with 1000 after `done`.
+- If the engine closes unexpectedly, the client gets the 503 error frame and close 4503.
+- The engine limits a run to 5 s of CPU time (time spent waiting for input doesn't count) and each input wait to
+  5 min; both end with a normal `done` that carries the error.
+- Sessions idle for more than 360 s are closed (`maxSessionIdleTimeout`), as nginx's `proxy_read_timeout`.
+- Connecting to the engine waits up to 5 s and is retried once.
+
+Try it with [wscat](https://github.com/websockets/wscat):
+
+```bash
+npx wscat -c ws://localhost:8080/snippets/<id>/run -s snippet-run.v1 -s "bearer.$TOKEN"
+> {"type":"start"}
+```
+
 ## Architecture
 
 ```
 com.ingsisbry.snippet
 ├── domain/                     Snippet, SnippetVersion, SnippetRules   (pure Kotlin)
 ├── application/
-│   ├── command/                create, update, delete, share, cleanup  (write side use cases)
+│   ├── command/                create, update, delete, share, cleanup, run  (write side use cases)
 │   ├── query/                  get, list, download, user search        (read side use cases)
 │   ├── port/out/               SnippetRepository, SnippetQueryRepository,
 │   │                           SnippetContentStorage, SnippetFilterValidator,
 │   │                           SupportedLanguages, SnippetContentValidator,
-│   │                           SnippetPermissions, UserDirectory
+│   │                           SnippetPermissions, UserDirectory, InteractiveRunner
 │   ├── error/                  sealed SnippetError
 │   └── common/                 Result, PageResult
 └── adapter/
     ├── web/                    controller, DTOs, error → HTTP mapping
     ├── persistence/            JPA entities, repositories, filters, specifications
     ├── storage/azure/          blob storage adapter
-    ├── language/               placeholder language service adapter
+    ├── language/               HTTP and WebSocket client for the engine proxy
+    ├── run/                    run WebSocket for the browser (handshake, relay)
     ├── permission/             HTTP client for snippet-permission-service
     ├── auth0/                  user search in the Auth0 Management API
     ├── security/               JWT validation, scopes, current user, token forwarding
@@ -446,7 +545,7 @@ Errors are values (section 4) and flow outward through three stages:
 | --- | --- | --- |
 | `InvalidInput` | 400 | Bad request data, bad filter, bad parameter |
 | `UnsupportedLanguage` | 400 | The language or its version isn't supported |
-| `InvalidSnippetContent` | 400 | Content breaks a language rule; the message includes rule, line and column |
+| `InvalidSnippetContent` | 400 | Content breaks a language rule; `rule`, `message` and `span` (line and column) are top-level fields, see [Invalid code](#invalid-code) |
 | `AccessDenied` | 403 | The caller can't perform that action, or the snippet doesn't exist for them |
 | `SnippetNotFound` | 404 | No such snippet |
 | `SnippetConflict` | 409 | Constraint violation, e.g. a concurrent update |
@@ -534,7 +633,7 @@ content is at most 1,000,000 characters.
 | Port | Question it answers | Failure |
 | --- | --- | --- |
 | `SupportedLanguages.check(language, languageVersion)` | Can snippets use this language and version? | `UnsupportedLanguage`, `LanguageServiceUnavailable` |
-| `SnippetContentValidator.validate(language, languageVersion, content)` | Does the content respect the language's rules? | `InvalidSnippetContent(rule, line, column)`, `LanguageServiceUnavailable` |
+| `SnippetContentValidator.validate(language, languageVersion, content)` | Does the content respect the language's rules? | `InvalidSnippetContent(rule, message, span)`, `LanguageServiceUnavailable` |
 
 - Create, update and content-only update call them before touching blob storage or the database. 
 - Content-only update has no language in the request, so it validates against the snippet's stored language and version.
@@ -557,15 +656,27 @@ content is at most 1,000,000 characters.
   - typed errors (including "the service is down", which maps to 503 instead of a misleading 400) 
   - and checks that run before any side effect.
 
-**Today.** `PermissiveLanguageServiceAdapter` implements both ports and accepts everything. 
-- It is a placeholder, so the service behaves as it did before these ports existed.
+**Today.** `EngineLanguageServiceAdapter` implements both ports against `printscript-engine`, through its
+proxy (`ENGINE_URL`):
+- `check` is `GET /versions`; the version must be in `versions`. A `400 UnknownLanguage` from the proxy (no
+  engine for that `X-Language`) is `UnsupportedLanguage`.
+- `validate` is `POST /validate` with `{code, version}`. `valid=false` becomes `InvalidSnippetContent` with the
+  engine's `rule`, `message` and `span`. A `400 UnsupportedVersion` is `UnsupportedLanguage`; any other `400` is
+  `InvalidInput` with the engine's detail.
+- The language travels in the `X-Language` header, exactly as stored; the proxy matches it case-insensitively.
+- Timeouts: 2 s to connect, 10 s to read. **502/503/504 are retried once, immediately**: the proxy can still
+  answer them for a moment after an engine instance dies, and every engine operation is safe to repeat. Any
+  other status, a second failure or an I/O error is `LanguageServiceUnavailable` (503).
+- The engine is internal and unauthenticated, so this client has no `BearerTokenForwarder`: users' tokens
+  never reach it. The code is never logged.
+
+`EngineInteractiveRunner` implements `InteractiveRunner` (the run socket) on the engine's `/run/interactive`,
+with the same rules: `X-Language`, no token, connect timeout 5 s with one retry.
 
 **Cost.**
-- Until the real adapter exists, no snippet is rejected for its language or content 
-- Once it exists, every create and update makes one or two network calls before saving, so latency and
-  availability depend on the language service. 
-- The 503 mapping makes that failure explicit.
-- Two ports means two calls. They could be merged if the service ends up exposing a single endpoint.
+- Every create and update makes two network calls before saving, so latency and availability depend on the
+  engine. The 503 mapping makes that failure explicit.
+- Two ports means two calls. They could be merged if the engine ends up exposing a single endpoint.
 
 ### 13. Permissions live in another service
 
@@ -658,13 +769,14 @@ We would rather list these than have them discovered:
   it yet.
 - **Large `IN` lists.** Listing sends every accessible id in one query; fine for the expected volume, not for
   users with tens of thousands of snippets.
-- **Language checks are a placeholder.** `PermissiveLanguageServiceAdapter` accepts every language and every
-  content, so unsupported languages and invalid snippets are not rejected yet. They will be once an adapter
-  for the language service replaces it.
 - **Formatting isn't implemented.** `formattedContent` is never written, and
   `download?version=formatted` currently returns the *original* content.
-- **`valid` is a stub.** Every snippet reports `valid = true`, `valid=false` returns nothing and
-  `sortBy=valid` sorts by name.
+- **`valid` is not persisted yet.** Every snippet reports `valid = true`, `valid=false` returns nothing and
+  `sortBy=valid` sorts by name. That is still correct today: create and update reject invalid code, so every
+  stored version passed the engine's `/validate`. A real flag only matters once snippets are re-validated
+  (a new parser version, the lint pipeline over Redis Streams), and it will be added with that pipeline.
+- **Runs use the saved version.** The run socket loads the snippet at handshake time and never accepts code
+  from the client, so unsaved changes in the editor are not what runs.
 - **No foreign keys or migrations.** The schema comes from `ddl-auto: update`; there are no FKs between
   `snippets.current_version_id`, `snippet_versions.snippet_id` and the tables. The unique version constraint
   is created that way too, and adding it to a database that already has duplicate versions will fail.
@@ -686,7 +798,14 @@ We would rather list these than have them discovered:
   nothing downstream is called).
 - **Adapters:** controllers, error mapper, query factory and the filter registry are covered in isolation.
   The permission adapter is tested against `MockRestServiceServer` (requests sent, the forwarded token, and
-  every answer mapped to its error), and so are the Auth0 user search and the M2M token cache.
+  every answer mapped to its error), and so are the Auth0 user search, the M2M token cache and the engine
+  adapter (versions, validation with and without a span, retry once on 502/503/504, no token sent).
+- **Invalid code:** `InvalidSnippetContentResponseTest` (`@WebMvcTest`) checks the exact `400` JSON, with
+  `rule`, `message` and `span` at the top level.
+- **Run socket:** `SnippetRunWebSocketHandlerTest` drives the handler with a fake session (error frames and
+  close codes, start/input, rejections, relayed events); `RunWebSocketIntegrationTest` runs a real server with
+  a fake engine socket: the token in `Sec-WebSocket-Protocol`, `401` before the upgrade, `403`/4403 without
+  READ, and a whole run relayed through `EngineInteractiveRunner`.
 - **Security:** `SecurityConfigurationTest` (`@WebMvcTest` with mock JWTs) checks `401` without a token,
   `403` without the scope, and that the caller is the token's `sub`.
   `embedded-azurite` is available on the test classpath for running the Azure adapter against a real

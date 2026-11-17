@@ -21,8 +21,12 @@ class SecurityConfiguration {
                     .hasAuthority(READ_SCOPE)
                     .anyRequest()
                     .hasAuthority(WRITE_SCOPE)
-            }.oauth2ResourceServer { it.jwt(withDefaults()) }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            }.oauth2ResourceServer {
+                // the run socket's handshake carries the token in Sec-WebSocket-Protocol; it is a GET, so the
+                // read scope applies to it like to any other read
+                it.bearerTokenResolver(WebSocketBearerTokenResolver())
+                it.jwt(withDefaults())
+            }.sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .csrf { it.disable() }
         return http.build()
     }

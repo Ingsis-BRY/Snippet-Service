@@ -3,7 +3,6 @@ package com.ingsisbry.snippet.application.command.update
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.InvalidInput
-import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
@@ -15,6 +14,7 @@ import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetRules
 import com.ingsisbry.snippet.support.FakeSnippetPermissions
+import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -78,13 +78,13 @@ class UpdateSnippetContentUseCaseTest {
         Mockito
             .`when`(snippetQueryRepository.findMetadataById(id))
             .thenReturn(Result.Success(metadata(id)))
-        contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
+        contentValidation = Result.Failure(SAMPLE_INVALID_CONTENT)
 
         // when
         val result = useCase.execute(UpdateSnippetContentCommand(id, "test-user", "let x = 1;"))
 
         // then
-        assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
+        assertEquals(Result.Failure(SAMPLE_INVALID_CONTENT), result)
         Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 

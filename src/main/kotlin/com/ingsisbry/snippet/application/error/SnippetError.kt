@@ -45,11 +45,11 @@ data class UnsupportedLanguage(
     val languageVersion: String,
 ) : SnippetError
 
-/** The snippet content breaks a language rule at the given position. */
+/** The snippet content breaks a language rule; [span] is null when the engine has no position (e.g. NestingTooDeep). */
 data class InvalidSnippetContent(
     val rule: String,
-    val line: Int,
-    val column: Int,
+    val message: String,
+    val span: SourceSpan?,
 ) : SnippetError
 
 /** The language service could not complete the operation. */
