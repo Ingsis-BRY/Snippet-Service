@@ -1,11 +1,15 @@
 package com.ingsisbry.snippet.application.command.update
 
+import com.ingsisbry.snippet.application.command.common.SnippetChangeNotifier
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.job.JobReason
+import com.ingsisbry.snippet.application.job.SnippetJob
+import com.ingsisbry.snippet.application.job.SnippetTask
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
@@ -13,7 +17,9 @@ import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetRules
+import com.ingsisbry.snippet.support.FakeSnippetJobPublisher
 import com.ingsisbry.snippet.support.FakeSnippetPermissions
+import com.ingsisbry.snippet.support.FakeSnippetTestRepository
 import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -46,6 +52,8 @@ class UpdateSnippetContentUseCaseTest {
     private val now = Instant.parse("2026-11-11T10:00:00Z")
 
     private val permissions = FakeSnippetPermissions()
+    private val publisher = FakeSnippetJobPublisher()
+    private val testRepository = FakeSnippetTestRepository()
 
     @BeforeEach
     fun setUp() {
@@ -56,6 +64,7 @@ class UpdateSnippetContentUseCaseTest {
                 contentStorage,
                 SnippetContentValidator { _, _, _ -> contentValidation },
                 permissions,
+                SnippetChangeNotifier(testRepository, publisher),
                 Clock.fixed(now, ZoneOffset.UTC),
             )
     }
@@ -112,6 +121,18 @@ class UpdateSnippetContentUseCaseTest {
         assertEquals(4, snippet.currentVersion.versionNumber)
         assertEquals("new content", snippet.currentVersion.originalContent)
         assertEquals(now, snippet.currentVersion.createdAt)
+        assertEquals(listOf(id), testRepository.markedPending)
+        assertEquals(
+            listOf(
+                SnippetJob(
+                    id,
+                    snippet.currentVersion.id,
+                    setOf(SnippetTask.LINT, SnippetTask.FORMAT, SnippetTask.TEST),
+                    JobReason.UPDATED,
+                ),
+            ),
+            publisher.published,
+        )
     }
 
     @Test

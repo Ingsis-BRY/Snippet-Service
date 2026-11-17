@@ -7,6 +7,15 @@ data class PageResult<T>(
     val totalElements: Long,
     val totalPages: Int,
 ) {
+    fun <R> map(transform: (T) -> R): PageResult<R> =
+        PageResult(
+            content = content.map(transform),
+            page = page,
+            size = size,
+            totalElements = totalElements,
+            totalPages = totalPages,
+        )
+
     companion object {
         fun <T> empty(
             page: Int,

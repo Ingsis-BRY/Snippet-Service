@@ -7,14 +7,15 @@ import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunIssue
 
 /**
- * What the browser sends: `{"type":"start"}` (optionally `"mode":"interactive"`) or
- * `{"type":"input","value":"..."}`. It never sends code or a version.
+ * What the browser sends: `{"type":"start"}` (optionally `"mode":"interactive"`), `{"type":"start","mode":"test",
+ * "testId":"..."}` or `{"type":"input","value":"..."}`. It never sends code, a version or a test's definition.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class ClientRunMessage(
     val type: String?,
     val mode: String?,
     val value: String?,
+    val testId: String? = null,
 )
 
 /** What the server sends to the browser, as JSON-ready maps so the field order and the nulls are explicit. */
@@ -24,7 +25,12 @@ internal object ServerRunMessages {
             is RunEvent.Output -> linkedMapOf("type" to "output", "line" to event.line)
             is RunEvent.AwaitingInput -> linkedMapOf("type" to "awaiting-input", "prompt" to event.prompt)
             is RunEvent.Done ->
-                linkedMapOf("type" to "done", "outputs" to event.outputs, "error" to event.error?.let(::issue))
+                linkedMapOf(
+                    "type" to "done",
+                    "outputs" to event.outputs,
+                    "error" to event.error?.let(::issue),
+                    "passed" to event.passed,
+                )
             is RunEvent.Rejected -> rejected(event.title, event.detail, event.properties)
         }
 

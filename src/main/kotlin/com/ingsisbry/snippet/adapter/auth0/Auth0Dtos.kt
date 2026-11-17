@@ -26,6 +26,7 @@ internal data class Auth0User(
     @param:JsonProperty("user_id")
     val userId: String,
     val name: String?,
+    val email: String? = null,
 )
 
 internal data class Auth0UserPage(

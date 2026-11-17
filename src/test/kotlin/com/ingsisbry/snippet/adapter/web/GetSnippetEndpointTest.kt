@@ -4,6 +4,7 @@ import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
+import com.ingsisbry.snippet.application.analysis.SnippetAnalysis
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
@@ -11,8 +12,9 @@ import com.ingsisbry.snippet.application.command.update.UpdateSnippetContent
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
-import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
+import com.ingsisbry.snippet.application.query.get.SnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
@@ -41,7 +43,7 @@ class GetSnippetEndpointTest {
     private lateinit var createSnippet: CreateSnippet
 
     @Mock
-    private lateinit var getSnippet: GetSnippet
+    private lateinit var getSnippetDetails: GetSnippetDetails
 
     @Mock
     private lateinit var updateSnippet: UpdateSnippet
@@ -60,7 +62,7 @@ class GetSnippetEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = getSnippet,
+                getSnippetDetails = getSnippetDetails,
                 updateSnippet = updateSnippet,
                 updateSnippetContent = Mockito.mock(UpdateSnippetContent::class.java),
                 deleteSnippet = deleteSnippet,
@@ -96,18 +98,24 @@ class GetSnippetEndpointTest {
     @Test
     fun `get returns the requested snippet`() {
         val snippet = createTestSnippet()
+        val details = SnippetDetails(snippet, ownerName = "Anon Ymous", isOwner = false, analysis = SnippetAnalysis.NEW)
 
         Mockito
             .`when`(
-                getSnippet.execute(GetSnippetQuery(snippet.id, "test-user")),
-            ).thenReturn(Result.Success(snippet))
+                getSnippetDetails.execute(GetSnippetQuery(snippet.id, "test-user")),
+            ).thenReturn(Result.Success(details))
 
         val response = controller.get("test-user", snippet.id)
 
         assertEquals(HttpStatus.OK, response.statusCode)
-        assertEquals(GetSnippetResponse.from(snippet), response.body)
+        val body = response.body as GetSnippetResponse
+        assertEquals(GetSnippetResponse.from(details), body)
+        assertEquals("Anon Ymous", body.ownerName)
+        assertEquals("pending", body.compliance)
+        assertEquals("valid", body.validationStatus)
+        assertEquals("pending", body.processing)
 
-        Mockito.verify(getSnippet).execute(GetSnippetQuery(snippet.id, "test-user"))
+        Mockito.verify(getSnippetDetails).execute(GetSnippetQuery(snippet.id, "test-user"))
     }
 
     @Test
@@ -116,7 +124,7 @@ class GetSnippetEndpointTest {
 
         Mockito
             .`when`(
-                getSnippet.execute(GetSnippetQuery(snippetId, "test-user")),
+                getSnippetDetails.execute(GetSnippetQuery(snippetId, "test-user")),
             ).thenReturn(Result.Failure(SnippetNotFound(snippetId)))
 
         val response = controller.get("test-user", snippetId)

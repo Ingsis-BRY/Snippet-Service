@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.application.command.update
 
+import com.ingsisbry.snippet.application.command.common.SnippetChangeNotifier
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
@@ -9,6 +10,9 @@ import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
+import com.ingsisbry.snippet.application.job.JobReason
+import com.ingsisbry.snippet.application.job.SnippetJob
+import com.ingsisbry.snippet.application.job.SnippetTask
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
@@ -16,7 +20,9 @@ import com.ingsisbry.snippet.application.port.out.query.SnippetMetadata
 import com.ingsisbry.snippet.application.port.out.query.SnippetQueryRepository
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.support.FakeSnippetJobPublisher
 import com.ingsisbry.snippet.support.FakeSnippetPermissions
+import com.ingsisbry.snippet.support.FakeSnippetTestRepository
 import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -50,6 +56,8 @@ class UpdateSnippetUseCaseTest {
     private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
 
     private val permissions = FakeSnippetPermissions()
+    private val publisher = FakeSnippetJobPublisher()
+    private val testRepository = FakeSnippetTestRepository()
 
     @BeforeEach
     fun setUp() {
@@ -61,6 +69,7 @@ class UpdateSnippetUseCaseTest {
                 supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
                 contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
                 permissions = permissions,
+                changes = SnippetChangeNotifier(testRepository, publisher),
                 clock = Clock.fixed(NOW, ZoneOffset.UTC),
             )
     }
@@ -152,6 +161,38 @@ class UpdateSnippetUseCaseTest {
         Mockito.verify(snippetRepository).update(snippet, keyCaptor.value)
 
         Mockito.verify(snippetQueryRepository, Mockito.never()).findById(snippetId)
+        // US#16: the tests go back to pending and everything is re-checked in the background
+        assertEquals(listOf(snippetId), testRepository.markedPending)
+        assertEquals(
+            listOf(
+                SnippetJob(
+                    snippetId,
+                    snippet.currentVersion.id,
+                    setOf(SnippetTask.LINT, SnippetTask.FORMAT, SnippetTask.TEST),
+                    JobReason.UPDATED,
+                ),
+            ),
+            publisher.published,
+        )
+    }
+
+    @Test
+    fun `execute should still succeed when publishing the job fails`() {
+        val snippetId = UUID.randomUUID()
+        publisher.failure = IllegalStateException("stream down")
+        Mockito
+            .`when`(snippetQueryRepository.findMetadataById(snippetId))
+            .thenReturn(Result.Success(metadata(snippetId, versionNumber = 1)))
+        Mockito
+            .`when`(contentStorage.store(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(Result.Success(Unit))
+        Mockito
+            .`when`(snippetRepository.update(anySnippet(), Mockito.anyString()))
+            .thenAnswer { Result.Success(it.getArgument<Snippet>(0)) }
+
+        val result = useCase.execute(updateCommand(snippetId))
+
+        assertTrue(result is Result.Success)
     }
 
     @Test
@@ -169,6 +210,7 @@ class UpdateSnippetUseCaseTest {
 
         Mockito.verify(snippetQueryRepository).findMetadataById(snippetId)
         Mockito.verifyNoInteractions(snippetRepository, contentStorage)
+        assertTrue(publisher.published.isEmpty())
     }
 
     @Test

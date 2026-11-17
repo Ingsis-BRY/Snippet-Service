@@ -15,6 +15,7 @@ import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.error.SourcePosition
 import com.ingsisbry.snippet.application.error.SourceSpan
+import com.ingsisbry.snippet.application.error.TestNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
 import org.springframework.http.HttpStatus
@@ -47,6 +48,8 @@ class SnippetErrorMapper {
                 is PersistenceUnavailable -> HttpStatus.SERVICE_UNAVAILABLE to "Snippet database is unavailable"
                 is ContentMissing -> HttpStatus.INTERNAL_SERVER_ERROR to "Snippet content is missing"
                 is SnippetCorrupted -> HttpStatus.INTERNAL_SERVER_ERROR to "Snippet data is inconsistent"
+                is TestNotFound ->
+                    HttpStatus.NOT_FOUND to "Test ${error.testId} not found in snippet ${error.snippetId}"
             }
 
         val problem = ProblemDetail.forStatusAndDetail(status, detail)
@@ -58,6 +61,8 @@ class SnippetErrorMapper {
                 problem.setProperty("span", error.span?.let(::spanProperty))
             }
             is UnsupportedLanguage -> problem.title = "UnsupportedLanguage"
+            is TestNotFound -> problem.title = "TestNotFound"
+            is LanguageServiceUnavailable -> problem.title = "LanguageServiceUnavailable"
             else -> Unit
         }
 

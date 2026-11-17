@@ -15,6 +15,7 @@ import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
@@ -62,7 +63,7 @@ class CreateSnippetEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = getSnippet,
+                getSnippetDetails = Mockito.mock(GetSnippetDetails::class.java),
                 updateSnippet = updateSnippet,
                 updateSnippetContent = Mockito.mock(UpdateSnippetContent::class.java),
                 deleteSnippet = deleteSnippet,
@@ -121,7 +122,7 @@ class CreateSnippetEndpointTest {
         val response = controller.create("test-user", request)
 
         assertEquals(HttpStatus.CREATED, response.statusCode)
-        assertEquals(CreateSnippetResponse(id = snippetId), response.body)
+        assertEquals(CreateSnippetResponse.from(snippet), response.body)
 
         Mockito.verify(createSnippet).execute(command)
     }

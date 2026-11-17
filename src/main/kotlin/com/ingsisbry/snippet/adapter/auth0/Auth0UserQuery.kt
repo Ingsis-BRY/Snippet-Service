@@ -40,6 +40,9 @@ internal object Auth0UserQuery {
         return "(name:$pattern OR email:$pattern) AND $exclusion"
     }
 
+    /** `user_id:("id1" OR "id2" ...)`, each id quoted. */
+    fun byIds(ids: Collection<String>): String = ids.joinToString(" OR ", "user_id:(", ")") { "\"${quoted(it)}\"" }
+
     private fun escaped(text: String): String =
         buildString {
             text.forEach { character ->

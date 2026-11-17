@@ -2,6 +2,7 @@ package com.ingsisbry.snippet.application.query.user
 
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
+import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.user.UserDirectory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -11,9 +12,21 @@ class SearchUsersUseCaseTest {
     private var lastSearch: List<Any>? = null
     private val page = UserPage(listOf(UserSummary("auth0|2", "Usario Dos")), 0, 10, 1)
     private val directory =
-        UserDirectory { text, excluded, page, size ->
-            lastSearch = listOf(text, excluded, page, size)
-            Result.Success(this.page)
+        object : UserDirectory {
+            override fun search(
+                text: String,
+                excludedUserId: String,
+                page: Int,
+                size: Int,
+            ): Result<SnippetError, UserPage> {
+                lastSearch = listOf(text, excludedUserId, page, size)
+                return Result.Success(this@SearchUsersUseCaseTest.page)
+            }
+
+            override fun namesOf(ids: Set<String>): Result<SnippetError, Map<String, String>> {
+                val names = ids.associateWith { it }
+                return Result.Success(names)
+            }
         }
     private val useCase = SearchUsersUseCase(directory)
 

@@ -1,3 +1,20 @@
+# The API and the worker are the same image with the same configuration; only the Spring profile differs.
+x-snippet-service-environment: &snippet-service-environment
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  POSTGRES_DB: "${POSTGRES_DB}"
+  POSTGRES_USER: "${POSTGRES_USER}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+  AZURE_STORAGE_CONNECTION_STRING: "${AZURE_STORAGE_CONNECTION_STRING}"
+  PERMISSION_SERVICE_URL: "http://snippet-permission-service:8080"
+  AUTH0_DOMAIN: "${AUTH0_DOMAIN}"
+  AUTH0_AUDIENCE: "${AUTH0_AUDIENCE}"
+  AUTH0_M2M_CLIENT_ID: "${AUTH0_M2M_CLIENT_ID}"
+  AUTH0_M2M_CLIENT_SECRET: "${AUTH0_M2M_CLIENT_SECRET}"
+  ENGINE_URL: "${ENGINE_URL:-http://engine-proxy:80}"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+
 services:
   snippet-service:
     build:
@@ -11,18 +28,8 @@ services:
       - "${SNIPPET_SERVICE_PORT}:8080"
 
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      POSTGRES_DB: "${POSTGRES_DB}"
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      AZURE_STORAGE_CONNECTION_STRING: "${AZURE_STORAGE_CONNECTION_STRING}"
-      PERMISSION_SERVICE_URL: "http://snippet-permission-service:8080"
-      AUTH0_DOMAIN: "${AUTH0_DOMAIN}"
-      AUTH0_AUDIENCE: "${AUTH0_AUDIENCE}"
-      AUTH0_M2M_CLIENT_ID: "${AUTH0_M2M_CLIENT_ID}"
-      AUTH0_M2M_CLIENT_SECRET: "${AUTH0_M2M_CLIENT_SECRET}"
-      ENGINE_URL: "${ENGINE_URL:-http://engine-proxy:80}"
+      <<: *snippet-service-environment
+      SPRING_PROFILES_ACTIVE: api
 
     # `default` must be listed, or the service would leave the compose network; `snippet-searcher` is
     # where printscript-engine's compose puts its `engine-proxy`
@@ -33,7 +40,41 @@ services:
     depends_on:
       - postgres
       - azurite
+      - redis
       - snippet-permission-service
+
+  # Same image as snippet-service, profile `worker`: consumes the `snippet.analysis` stream (lint, format,
+  # tests, re-validation on a new parser). No HTTP server, so no ports.
+  snippet-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      secrets:
+        - github_username
+        - github_token
+
+    environment:
+      <<: *snippet-service-environment
+      SPRING_PROFILES_ACTIVE: worker
+
+    networks:
+      - default
+      - snippet-searcher
+
+    depends_on:
+      - postgres
+      - azurite
+      - redis
+
+    # lets the consumer finish the job in hand (it checks for a stop every 2 s)
+    stop_grace_period: 30s
+
+  # Redis Streams for the background jobs; append-only file so queued jobs survive a restart
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-data:/data
 
   snippet-permission-service:
     image: "${PERMISSION_SERVICE_IMAGE:-ghcr.io/ingsis-bry/snippet-permission-service:latest}"
@@ -93,6 +134,7 @@ networks:
 
 volumes:
   postgres-data:
+  redis-data:
   azurite-data:
   snippet-permission-db-data:
 

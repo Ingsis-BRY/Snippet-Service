@@ -14,7 +14,7 @@ import com.ingsisbry.snippet.application.command.update.UpdateSnippetContentComm
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
-import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.domain.Snippet
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -41,7 +41,7 @@ class UploadSnippetEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = Mockito.mock(GetSnippet::class.java),
+                getSnippetDetails = Mockito.mock(GetSnippetDetails::class.java),
                 updateSnippet = updateSnippet,
                 updateSnippetContent = updateSnippetContent,
                 deleteSnippet = Mockito.mock(DeleteSnippet::class.java),
@@ -75,7 +75,7 @@ class UploadSnippetEndpointTest {
         val response = controller.createFromFile("test-user", "Example", "Example snippet", "PrintScript", "1.0", file)
 
         assertEquals(HttpStatus.CREATED, response.statusCode)
-        assertEquals(CreateSnippetResponse(id = snippetId), response.body)
+        assertEquals(CreateSnippetResponse.from(snippet()), response.body)
     }
 
     @Test

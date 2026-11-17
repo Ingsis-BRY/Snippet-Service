@@ -3,6 +3,8 @@ package com.ingsisbry.snippet.adapter.run
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.query.get.GetSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
+import com.ingsisbry.snippet.application.query.tests.ListSnippetTests
+import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.server.ServerHttpRequest
 import org.springframework.http.server.ServerHttpResponse
@@ -20,8 +22,10 @@ import java.util.UUID
  * because a browser can't read the status of a refused handshake.
  */
 @Component
+@Profile("!worker")
 class SnippetRunHandshakeInterceptor(
     private val getSnippet: GetSnippet,
+    private val listSnippetTests: ListSnippetTests,
 ) : HandshakeInterceptor {
     override fun beforeHandshake(
         request: ServerHttpRequest,
@@ -42,10 +46,15 @@ class SnippetRunHandshakeInterceptor(
             attributes[RunAttributes.ERROR] = InvalidInput("Invalid snippet id")
         } else {
             attributes[RunAttributes.SNIPPET_ID] = snippetId
+            // the tests are loaded with the snippet so a test run (US#9) can only use one of this snippet's tests
             getSnippet
                 .execute(GetSnippetQuery(snippetId, userId))
+                .flatMap { snippet -> listSnippetTests.execute(snippetId, userId).map { tests -> snippet to tests } }
                 .fold(
-                    onSuccess = { attributes[RunAttributes.SNIPPET] = it },
+                    onSuccess = { (snippet, tests) ->
+                        attributes[RunAttributes.SNIPPET] = snippet
+                        attributes[RunAttributes.TESTS] = tests
+                    },
                     onFailure = { attributes[RunAttributes.ERROR] = it },
                 )
         }
@@ -76,5 +85,6 @@ internal object RunAttributes {
     const val USER_ID = "userId"
     const val SNIPPET_ID = "snippetId"
     const val SNIPPET = "snippet"
+    const val TESTS = "tests"
     const val ERROR = "error"
 }

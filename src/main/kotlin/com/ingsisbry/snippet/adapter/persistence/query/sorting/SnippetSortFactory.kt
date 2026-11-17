@@ -13,9 +13,8 @@ object SnippetSortFactory {
             when (sortBy) {
                 SnippetSortField.NAME -> "name"
                 SnippetSortField.LANGUAGE -> "language"
-
-                // All Snippets are valid for now
-                SnippetSortField.VALID -> "name"
+                // alphabetical on the stored status: COMPLIANT, FAILED, NOT_COMPLIANT, PENDING
+                SnippetSortField.VALID -> "currentVersion.lintStatus"
             }
 
         val sortDirection =

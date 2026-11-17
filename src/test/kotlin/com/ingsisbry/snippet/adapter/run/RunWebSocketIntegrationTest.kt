@@ -8,6 +8,7 @@ import com.ingsisbry.snippet.application.command.run.StartRunUseCase
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.AccessDenied
 import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.tests.ListSnippetTests
 import com.ingsisbry.snippet.domain.Snippet
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -127,7 +128,7 @@ class RunWebSocketIntegrationTest {
 
         client.send("""{"type":"input","value":"Ana"}""")
         assertEquals("""{"type":"output","line":"Hi Ana"}""", client.next())
-        assertEquals("""{"type":"done","outputs":["Hello","Hi Ana"],"error":null}""", client.next())
+        assertEquals("""{"type":"done","outputs":["Hello","Hi Ana"],"error":null,"passed":null}""", client.next())
 
         assertEquals(listOf("printscript"), engine.languages)
         assertEquals(
@@ -286,6 +287,9 @@ class RunWebSocketIntegrationTest {
                     Result.Failure(AccessDenied(query.snippetId, query.userId))
                 }
             }
+
+        @Bean
+        fun listSnippetTests(): ListSnippetTests = ListSnippetTests { _, _ -> Result.Success(emptyList()) }
 
         /** The engine URL is this server, whose port is only known once it started. */
         @Bean

@@ -3,6 +3,7 @@ package com.ingsisbry.snippet.adapter.language
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.InteractiveRunner
 import com.ingsisbry.snippet.application.port.out.run.RunListener
 import com.ingsisbry.snippet.application.port.out.run.RunSession
@@ -98,6 +99,8 @@ class EngineInteractiveRunner(
             object : RunSession {
                 override fun start() = send(EngineRunMessages.start(code, version))
 
+                override fun startTest(test: TestSpec) = send(EngineRunMessages.startTest(code, version, test))
+
                 override fun input(value: String) = send(EngineRunMessages.input(value))
 
                 override fun close() {
@@ -111,7 +114,7 @@ class EngineInteractiveRunner(
             }
 
         /** A failed send means the socket is gone; the listener hears about it through [RunListener.onClosed]. */
-        private fun send(message: Map<String, String>) {
+        private fun send(message: Map<String, Any>) {
             try {
                 session.sendMessage(TextMessage(json.writeValueAsString(message)))
             } catch (exception: IOException) {

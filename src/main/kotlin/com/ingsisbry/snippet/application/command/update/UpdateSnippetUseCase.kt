@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.application.command.update
 
+import com.ingsisbry.snippet.application.command.common.SnippetChangeNotifier
 import com.ingsisbry.snippet.application.command.common.storeThenPersist
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
@@ -28,6 +29,7 @@ class UpdateSnippetUseCase(
     private val supportedLanguages: SupportedLanguages,
     private val contentValidator: SnippetContentValidator,
     private val permissions: SnippetPermissions,
+    private val changes: SnippetChangeNotifier,
     private val clock: Clock,
 ) : UpdateSnippet {
     override fun execute(command: UpdateSnippetCommand): Result<SnippetError, Snippet> {
@@ -49,6 +51,7 @@ class UpdateSnippetUseCase(
                 .flatMap { contentValidator.validate(command.language, command.languageVersion, command.content) }
                 .flatMap { snippetQueryRepository.findMetadataById(command.id) }
                 .flatMap { existing -> store(command, existing) }
+                .onSuccess { snippet -> changes.updated(snippet) }
         }
     }
 

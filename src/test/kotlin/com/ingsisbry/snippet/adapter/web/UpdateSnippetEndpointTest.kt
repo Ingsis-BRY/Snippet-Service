@@ -16,6 +16,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.domain.SnippetVersion
@@ -66,7 +67,7 @@ class UpdateSnippetEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = getSnippet,
+                getSnippetDetails = Mockito.mock(GetSnippetDetails::class.java),
                 updateSnippet = updateSnippet,
                 updateSnippetContent = updateSnippetContent,
                 deleteSnippet = deleteSnippet,

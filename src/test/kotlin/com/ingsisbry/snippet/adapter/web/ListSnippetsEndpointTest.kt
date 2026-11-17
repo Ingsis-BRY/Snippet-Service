@@ -1,9 +1,12 @@
 package com.ingsisbry.snippet.adapter.web
 
 import com.ingsisbry.snippet.adapter.web.dto.common.pagination.PageResponse
+import com.ingsisbry.snippet.adapter.web.dto.response.SnippetListItemResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
+import com.ingsisbry.snippet.application.analysis.LintStatus
+import com.ingsisbry.snippet.application.analysis.ProcessingStatus
 import com.ingsisbry.snippet.application.command.create.CreateSnippet
 import com.ingsisbry.snippet.application.command.delete.DeleteSnippet
 import com.ingsisbry.snippet.application.command.update.UpdateSnippet
@@ -13,6 +16,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.application.query.list.ListSnippetsQuery
 import com.ingsisbry.snippet.application.query.list.SnippetListItem
@@ -62,7 +66,7 @@ class ListSnippetsEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = getSnippet,
+                getSnippetDetails = Mockito.mock(GetSnippetDetails::class.java),
                 updateSnippet = updateSnippet,
                 updateSnippetContent = Mockito.mock(UpdateSnippetContent::class.java),
                 deleteSnippet = deleteSnippet,
@@ -97,7 +101,9 @@ class ListSnippetsEndpointTest {
                 language = "Java",
                 languageVersion = "21",
                 owner = "anonymous",
-                valid = true,
+                ownerName = "Anonymous User",
+                compliance = LintStatus.COMPLIANT,
+                processing = ProcessingStatus.FINISHED,
             )
 
         val pageResult =
@@ -120,7 +126,7 @@ class ListSnippetsEndpointTest {
         val response = controller.list("test-user", parameters)
 
         assertEquals(HttpStatus.OK, response.statusCode)
-        assertEquals(PageResponse.from(pageResult), response.body)
+        assertEquals(PageResponse.from(pageResult.map(SnippetListItemResponse::from)), response.body)
 
         Mockito.verify(queryFactory).create(parameters, "test-user")
         Mockito.verify(listSnippets).execute(query)
@@ -162,7 +168,7 @@ class ListSnippetsEndpointTest {
         val response = controller.list("test-user", parameters)
 
         assertEquals(HttpStatus.OK, response.statusCode)
-        assertEquals(PageResponse.from(pageResult), response.body)
+        assertEquals(PageResponse.from(pageResult.map(SnippetListItemResponse::from)), response.body)
 
         Mockito.verify(queryFactory).create(parameters, "test-user")
         Mockito.verify(listSnippets).execute(query)

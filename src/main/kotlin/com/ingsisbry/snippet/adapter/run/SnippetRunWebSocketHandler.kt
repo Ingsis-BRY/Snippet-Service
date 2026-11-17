@@ -3,11 +3,14 @@ package com.ingsisbry.snippet.adapter.run
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.command.run.StartRun
 import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunListener
 import com.ingsisbry.snippet.application.port.out.run.RunSession
+import com.ingsisbry.snippet.application.query.tests.SnippetTestView
 import com.ingsisbry.snippet.domain.Snippet
 import org.slf4j.LoggerFactory
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.SubProtocolCapable
@@ -22,13 +25,16 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * `/snippets/{id}/run` (US#10): relays an interactive run between the browser and the engine.
+ * `/snippets/{id}/run` (US#9, US#10): relays an interactive run, or a run of one of the snippet's tests, between
+ * the browser and the engine.
  *
- * The browser only says `start` and answers prompts; the code is the snippet's current version, loaded and
- * authorized at handshake time. Errors that end the connection are sent as an `error` frame followed by a
+ * The browser only says `start` (naming a test in test mode) and answers prompts; the code is the snippet's current
+ * version and the tests are the snippet's own, both loaded and authorized at handshake time. Test runs started
+ * here are not stored. Errors that end the connection are sent as an `error` frame followed by a
  * close with code `4000 + status`. Only the snippet id and the user id are logged, never the token or the code.
  */
 @Component
+@Profile("!worker")
 class SnippetRunWebSocketHandler(
     private val startRun: StartRun,
     private val errorMapper: SnippetErrorMapper,
@@ -45,6 +51,7 @@ class SnippetRunWebSocketHandler(
             RunConnection(
                 out = RunOutbox(ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, SEND_BUFFER_LIMIT)),
                 snippet = session.attributes[RunAttributes.SNIPPET] as? Snippet,
+                tests = testsOf(session),
                 snippetId = session.attributes[RunAttributes.SNIPPET_ID]?.toString(),
                 userId = session.attributes[RunAttributes.USER_ID]?.toString(),
             )
@@ -93,10 +100,14 @@ class SnippetRunWebSocketHandler(
         }
     }
 
+    private fun testsOf(session: WebSocketSession): List<SnippetTestView> =
+        (session.attributes[RunAttributes.TESTS] as? List<*>).orEmpty().filterIsInstance<SnippetTestView>()
+
     /** One browser socket and, after the first `start`, its engine session. */
     private inner class RunConnection(
         private val out: RunOutbox,
         val snippet: Snippet?,
+        private val tests: List<SnippetTestView>,
         val snippetId: String?,
         val userId: String?,
     ) : RunListener {
@@ -114,17 +125,38 @@ class SnippetRunWebSocketHandler(
                     return out.reject(MALFORMED_MESSAGE, "The message is not valid JSON.")
                 }
             when (request.type) {
-                "start" -> start(request.mode)
+                "start" -> start(request.mode, request.testId)
                 "input" -> input(request.value)
                 else -> out.reject(MALFORMED_MESSAGE, "'type' must be 'start' or 'input'.")
             }
         }
 
-        private fun start(mode: String?) {
-            if (mode != null && mode != INTERACTIVE_MODE) {
-                return out.reject(MALFORMED_MESSAGE, "'mode' must be 'interactive'.")
+        private fun start(
+            mode: String?,
+            testId: String?,
+        ) {
+            when (mode) {
+                null, INTERACTIVE_MODE -> (runSession ?: open())?.start()
+                TEST_MODE -> startTest(testId)
+                else -> out.reject(MALFORMED_MESSAGE, "'mode' must be 'interactive' or 'test'.")
             }
-            (runSession ?: open())?.start()
+        }
+
+        private fun startTest(testId: String?) {
+            if (testId == null) {
+                return out.reject(MALFORMED_MESSAGE, "'test' mode needs a 'testId'.")
+            }
+            val test =
+                tests
+                    .firstOrNull {
+                        it.test.id
+                            .toString()
+                            .equals(testId, ignoreCase = true)
+                    }?.test
+            if (test == null) {
+                return out.reject(UNKNOWN_TEST, "Test $testId does not belong to this snippet.")
+            }
+            (runSession ?: open())?.startTest(TestSpec(test.id.toString(), test.inputs, test.expectedOutputs))
         }
 
         private fun input(value: String?) {
@@ -226,6 +258,8 @@ class SnippetRunWebSocketHandler(
         const val INTERNAL_SERVER_ERROR = 500
         const val INTERNAL_ERROR = "InternalError"
         const val INTERACTIVE_MODE = "interactive"
+        const val TEST_MODE = "test"
+        const val UNKNOWN_TEST = "UnknownTest"
         const val MALFORMED_MESSAGE = "MalformedMessage"
         const val NO_INTERACTIVE_RUN = "NoInteractiveRun"
     }
