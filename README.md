@@ -34,11 +34,21 @@ Gradle properties).
 # build + tests + ktlint + detekt
 ./gradlew check
 
+# local settings: copy the template, then fill in the Auth0 M2M credentials
+cp .env.example .env
+
+# GitHub Packages credentials for the image build (or set USERNAME / TOKEN in .env)
+export USERNAME=<github-user> TOKEN=<github-token-with-read:packages>
+
 # run everything (service, Postgres, Azurite, permission service and its database)
 docker compose up --build
 ```
 
-`docker compose` reads these variables (for example from a `.env` file):
+`USERNAME` and `TOKEN` are required for `docker compose up --build`: they become the `github_username` /
+`github_token` build secrets. On Windows `USERNAME` is already defined as your Windows user, so set it
+explicitly to your GitHub user.
+
+`docker compose` reads these variables (`.env.example` lists all of them with local defaults):
 
 | Variable | Purpose |
 | --- | --- |
@@ -54,7 +64,10 @@ docker compose up --build
 | `USERNAME`, `TOKEN` | GitHub Packages credentials, used as Docker build secrets |
 
 The service itself reads `PERMISSION_SERVICE_URL` (default `http://snippet-permission-service:8080`, the
-service name inside the Swarm and compose networks).
+service name inside the Swarm and compose networks) and `DB_HOST` / `DB_PORT` (default `localhost:5432`, for
+running the jar outside Docker). The compose file sets `DB_HOST=postgres` so the container reaches the
+compose database. Inside compose, `AZURE_STORAGE_CONNECTION_STRING` must use
+`BlobEndpoint=http://azurite:10000/devstoreaccount1`, as in `.env.example`.
 
 Optional property: `snippet.orphaned-content-cleanup.cron` (default `0 0 3 * * *`, daily at 03:00).
 
