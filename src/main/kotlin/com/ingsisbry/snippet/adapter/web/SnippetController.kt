@@ -7,6 +7,7 @@ import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetContentRequest
 import com.ingsisbry.snippet.adapter.web.dto.request.UpdateSnippetRequest
 import com.ingsisbry.snippet.adapter.web.dto.response.CreateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.GetSnippetResponse
+import com.ingsisbry.snippet.adapter.web.dto.response.SnippetListItemResponse
 import com.ingsisbry.snippet.adapter.web.dto.response.UpdateSnippetResponse
 import com.ingsisbry.snippet.adapter.web.mapper.ListSnippetsQueryFactory
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetDownloadMapper
@@ -22,9 +23,10 @@ import com.ingsisbry.snippet.application.command.update.UpdateSnippetContentComm
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
-import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.get.GetSnippetQuery
 import com.ingsisbry.snippet.application.query.list.ListSnippets
+import org.springframework.context.annotation.Profile
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -43,10 +45,11 @@ import org.springframework.web.multipart.MultipartFile
 import java.util.UUID
 
 @RestController
+@Profile("!worker")
 @RequestMapping("/snippets")
 class SnippetController(
     private val createSnippet: CreateSnippet,
-    private val getSnippet: GetSnippet,
+    private val getSnippetDetails: GetSnippetDetails,
     private val updateSnippet: UpdateSnippet,
     private val updateSnippetContent: UpdateSnippetContent,
     private val deleteSnippet: DeleteSnippet,
@@ -74,7 +77,7 @@ class SnippetController(
             ).respond { snippet ->
                 ResponseEntity
                     .status(HttpStatus.CREATED)
-                    .body(CreateSnippetResponse(id = snippet.id))
+                    .body(CreateSnippetResponse.from(snippet))
             }
 
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
@@ -102,7 +105,7 @@ class SnippetController(
             }.respond { snippet ->
                 ResponseEntity
                     .status(HttpStatus.CREATED)
-                    .body(CreateSnippetResponse(id = snippet.id))
+                    .body(CreateSnippetResponse.from(snippet))
             }
 
     @GetMapping
@@ -115,16 +118,16 @@ class SnippetController(
                 parameters = parameters,
                 user = userId,
             ).flatMap { query -> listSnippets.execute(query) }
-            .respond { page -> ResponseEntity.ok(PageResponse.from(page)) }
+            .respond { page -> ResponseEntity.ok(PageResponse.from(page.map(SnippetListItemResponse::from))) }
 
     @GetMapping("/{snippetId}")
     fun get(
         @CurrentUserId userId: String,
         @PathVariable snippetId: UUID,
     ): ResponseEntity<*> =
-        getSnippet
+        getSnippetDetails
             .execute(GetSnippetQuery(snippetId = snippetId, userId = userId))
-            .respond { snippet -> ResponseEntity.ok(GetSnippetResponse.from(snippet)) }
+            .respond { details -> ResponseEntity.ok(GetSnippetResponse.from(details)) }
 
     @PutMapping("/{snippetId}")
     fun update(

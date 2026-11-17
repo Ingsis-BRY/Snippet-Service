@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.application.command.create
 
+import com.ingsisbry.snippet.application.command.common.SnippetChangeNotifier
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
@@ -8,12 +9,17 @@ import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
+import com.ingsisbry.snippet.application.job.JobReason
+import com.ingsisbry.snippet.application.job.SnippetJob
+import com.ingsisbry.snippet.application.job.SnippetTask
 import com.ingsisbry.snippet.application.port.out.command.SnippetRepository
 import com.ingsisbry.snippet.application.port.out.language.SnippetContentValidator
 import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.support.FakeSnippetJobPublisher
 import com.ingsisbry.snippet.support.FakeSnippetPermissions
+import com.ingsisbry.snippet.support.FakeSnippetTestRepository
 import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -44,6 +50,7 @@ class CreateSnippetUseCaseTest {
     private var contentValidation: Result<SnippetError, Unit> = Result.Success(Unit)
 
     private val permissions = FakeSnippetPermissions()
+    private val publisher = FakeSnippetJobPublisher()
 
     private val createdAt = Instant.parse("2026-10-27T12:00:00Z")
 
@@ -58,6 +65,7 @@ class CreateSnippetUseCaseTest {
                 supportedLanguages = SupportedLanguages { _, _ -> languageCheck },
                 contentValidator = SnippetContentValidator { _, _, _ -> contentValidation },
                 permissions = permissions,
+                changes = SnippetChangeNotifier(FakeSnippetTestRepository(), publisher),
                 clock = clock,
             )
     }
@@ -149,6 +157,17 @@ class CreateSnippetUseCaseTest {
         Mockito.verify(snippetRepository).save(snippet, keyCaptor.value)
         Mockito.verify(contentStorage, Mockito.never()).delete(Mockito.anyString())
         assertEquals(mapOf(snippet.id to command.owner), permissions.owners)
+        assertEquals(
+            listOf(
+                SnippetJob(
+                    snippet.id,
+                    snippet.currentVersion.id,
+                    setOf(SnippetTask.LINT, SnippetTask.FORMAT),
+                    JobReason.CREATED,
+                ),
+            ),
+            publisher.published,
+        )
     }
 
     @Test
@@ -172,6 +191,7 @@ class CreateSnippetUseCaseTest {
         val result = useCase.execute(command)
 
         assertEquals(Result.Failure(PermissionServiceUnavailable("down")), result)
+        assertTrue(publisher.published.isEmpty())
         Mockito.verify(contentStorage).store(captureString(storedKey), eqString(command.content))
         Mockito.verify(snippetRepository).deleteById(anyUuid())
         Mockito.verify(contentStorage).delete("stored-key")

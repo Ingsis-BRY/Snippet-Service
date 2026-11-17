@@ -13,6 +13,7 @@ import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
 import com.ingsisbry.snippet.application.query.download.SnippetContentVariant
 import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -58,7 +59,7 @@ class DownloadSnippetEndpointTest {
         controller =
             SnippetController(
                 createSnippet = createSnippet,
-                getSnippet = getSnippet,
+                getSnippetDetails = Mockito.mock(GetSnippetDetails::class.java),
                 updateSnippet = updateSnippet,
                 updateSnippetContent = Mockito.mock(UpdateSnippetContent::class.java),
                 deleteSnippet = deleteSnippet,

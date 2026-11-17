@@ -101,6 +101,39 @@ class Auth0ManagementUserDirectoryTest {
         assertTrue((result as Result.Failure).error is UserDirectoryUnavailable)
     }
 
+    @Test
+    fun `names are looked up in one query, cached, and unknown ids map to themselves`() {
+        expectToken()
+        server
+            .expect(ExpectedCount.once(), requestTo(org.hamcrest.Matchers.startsWith("$BASE_URL/api/v2/users")))
+            .andExpect(decodedQueryParam("q", "user_id:(\"auth0|1\" OR \"auth0|2\" OR \"auth0|3\")"))
+            .andExpect(decodedQueryParam("fields", "user_id,name,email"))
+            .andExpect(decodedQueryParam("per_page", "100"))
+            .andRespond(
+                withSuccess(
+                    """{"users":[{"user_id":"auth0|1","name":"Uno"},""" +
+                        """{"user_id":"auth0|2","email":"dos@x.io"}],"total":2}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+        val ids = linkedSetOf("auth0|1", "auth0|2", "auth0|3")
+        val expected = Result.Success(mapOf("auth0|1" to "Uno", "auth0|2" to "dos@x.io", "auth0|3" to "auth0|3"))
+
+        assertEquals(expected, directory.namesOf(ids))
+        // the second lookup is answered from the cache: the server expects a single request
+        assertEquals(expected, directory.namesOf(ids))
+    }
+
+    @Test
+    fun `a failed name lookup is an unavailable directory`() {
+        expectToken()
+        server
+            .expect(requestTo(org.hamcrest.Matchers.startsWith("$BASE_URL/api/v2/users")))
+            .andRespond(withServerError())
+
+        assertTrue((directory.namesOf(setOf("auth0|1")) as Result.Failure).error is UserDirectoryUnavailable)
+    }
+
     private fun decodedQueryParam(
         name: String,
         expected: String,

@@ -4,6 +4,7 @@ A Kotlin / Spring Boot service that manages code snippets.
 
 
 - [API](#api)
+- [Background analysis (Redis Streams)](#background-analysis-redis-streams)
 - [Architecture](#architecture-at-a-glance)
 - [Decisions and tradeoffs](#decisions-and-tradeoffs)
   - [1. Hexagonal architecture](#1-hexagonal-architecture)
@@ -44,7 +45,7 @@ cp .env.example .env
 # GitHub Packages credentials for the image build (or set USERNAME / TOKEN in .env)
 export USERNAME=<github-user> TOKEN=<github-token-with-read:packages>
 
-# 2. everything else (service, Postgres, Azurite, permission service and its database)
+# 2. everything else (service, worker, Redis, Postgres, Azurite, permission service and its database)
 docker compose up --build
 ```
 
@@ -113,18 +114,26 @@ the token's `sub` (for example `auth0|6afb5dfa6b2193fbf0b82627`).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/snippets` | Create a snippet (version 1). Returns `201` with the id. |
-| `GET` | `/snippets` | Paginated list. Params: `page`, `size` (1-100), `sortBy` (`name`, `language`, `valid`), `direction`, `relationship`, plus the filters `name`, `language`, `valid`. |
-| `GET` | `/snippets/{id}` | Snippet with its current version's content. |
+| `POST` | `/snippets` | Create a snippet (version 1). Returns `201` with the whole snippet (`id`, `name`, `description`, `language`, `languageVersion`, `owner`, `versionNumber`, `content`). |
+| `GET` | `/snippets` | Paginated list. Params: `page`, `size` (1-100), `sortBy` (`name`, `language`, `valid`), `direction`, `relationship` (`owned`, `shared`, `all`), plus the filters `name`, `language`, `valid`. Each item has `ownerName`, `valid`, `compliance` and `processing` (see [Analysis statuses](#analysis-statuses)). |
+| `GET` | `/snippets/{id}` | Snippet with its current version's content, `ownerName`, `isOwner`, `compliance`, `lintIssues`, `validationStatus`, `validationError`, `formatStatus` and `processing`. |
 | `PUT` | `/snippets/{id}` | Replace name/description/language/content; creates a new version. |
 | `PATCH` | `/snippets/{id}` | Replace only the content (body `{"content": ...}`); creates a new version, other fields are kept. |
 | `DELETE` | `/snippets/{id}` | Delete the snippet, all versions and their blobs. |
-| `GET` | `/snippets/{id}/download?version=original\|formatted` | Content as a `text/plain` attachment. |
+| `GET` | `/snippets/{id}/download?version=original\|formatted` | Content as a `text/plain` attachment. `formatted` serves the stored formatted version; until the background formatter has stored it, the snippet is formatted on the spot with its **owner's** format rules (not stored). |
+| `POST` | `/snippets/{id}/format` | Format button: body `{"content": "..."}` (or none = the current content), formatted with the **owner's** rules. Returns `{"formatted", "ignoredRules"}`; nothing is stored. Needs READ. |
+| `GET` | `/snippets/{id}/tests` | The snippet's test cases (#8) in creation order: `[{id, snippetId, name, input, output, status, actualOutput, error, lastRunAt}]`. Needs READ. |
+| `POST` | `/snippets/{id}/tests` | Add a test: `{"name", "input": [...], "output": [...]}` (`input`/`output` may be omitted). `201`. Needs WRITE. At most 50 tests per snippet, 100 items of 1000 characters per list. |
+| `PUT` | `/snippets/{id}/tests/{testId}` | Replace a test's definition; it goes back to `pending`. `404 TestNotFound` if the test isn't in that snippet. |
+| `DELETE` | `/snippets/{id}/tests/{testId}` | Delete a test. `204`. |
+| `GET` | `/rules/format`, `/rules/lint` | The caller's rules (#11, #14): the engine's catalog with the caller's choices, `[{id, name, description, type, isActive, value, default, options, min, max, since}]`. |
+| `PUT` | `/rules/format`, `/rules/lint` | Replace the caller's rules: `[{"id", "isActive", "value"}]` (rules left out are disabled). Validated against the catalog and by the engine; then every snippet of the caller is re-linted or re-formatted in the background (#12, #15). Returns the new state. |
+| `GET` | `/languages` | Languages and versions to write snippets in: `[{language, extension, extensions, versions, defaultVersion}]`, from the engine's `GET /versions`. |
 | `POST` | `/snippets/upload` | Create a snippet from an uploaded file. `multipart/form-data` with `name`, `description`, `language`, `languageVersion` and `file`. Returns `201` with the id. |
 | `PUT` | `/snippets/{id}/upload` | Replace name/description/language/content from an uploaded file. Same form fields as above; creates a new version. |
 | `PATCH` | `/snippets/{id}/upload` | Replace only the content from an uploaded file. `multipart/form-data` with `file`; creates a new version, other fields are kept. |
 | `POST` | `/snippets/{id}/share` | Share the snippet with another user (body `{"targetUserId": "auth0\|..."}`). Only the owner. Returns `204`. |
-| `GET` | `/snippets/{id}/run` | **WebSocket.** Interactive run of the snippet's current version (#10). See [Interactive run](#interactive-run-websocket). |
+| `GET` | `/snippets/{id}/run` | **WebSocket.** Interactive run of the snippet's current version (#10), or a run of one of its tests (#9). See [Interactive run](#interactive-run-websocket). |
 | `GET` | `/users?name=&page=0&size=10` | Users to share with (#7): name or email contains `name` (prefix if shorter than 3 characters), never the caller. Returns `{users: [{id, name}], page, size, total}`. |
 
 Who can do what is decided by `snippet-permission-service`:
@@ -132,8 +141,8 @@ Who can do what is decided by `snippet-permission-service`:
 | Endpoint | Required permission |
 | --- | --- |
 | Create (JSON or file) | none; the caller becomes the `OWNER` |
-| Get, download, run (WebSocket) | `READ` (owner or shared with) |
-| Update, patch (JSON or file) | `WRITE` (owner) |
+| Get, download, format, run (WebSocket), list tests | `READ` (owner or shared with) |
+| Update, patch (JSON or file), create/update/delete tests | `WRITE` (owner) |
 | Delete | `DELETE` (owner) |
 | Share | `SHARE` (owner) |
 | List | only snippets the caller can access; `relationship=OWNED\|SHARED\|ALL` |
@@ -170,6 +179,23 @@ HTTP/1.1 400  Content-Type: application/problem+json
 - An engine that can't be reached, or answers 502/503/504 twice, is `503` with detail
   `"Language service is unavailable"`.
 
+### Analysis statuses
+
+Each snippet version carries the result of its analysis. Creating or updating a snippet validates it
+synchronously; lint, format and tests run in the background (the update never waits for them, #16), with the
+**owner's** rules. Saving rules marks the owner's snippets `pending` again.
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `validationStatus` | `pending`, `valid`, `invalid`, `failed` | Parser validation; `invalid` only after a parser upgrade re-validated old code (`validationError` says why). |
+| `compliance` | `pending`, `compliant`, `not-compliant`, `failed` | Lint result with the owner's lint rules; `lintIssues` lists the broken rules. `valid` in the list is `compliance == compliant`, and `valid=true\|false` filters/sorts by it. |
+| `formatStatus` | `pending`, `finished`, `failed` | Whether the formatted version is stored. |
+| `processing` | `pending`, `finished`, `failed` | Derived: `pending` while any of the above is pending, `failed` if any failed, else `finished`. |
+| test `status` | `pending`, `passed`, `failed`, `error` | Last automatic run of a test against the current version. |
+
+The background jobs go through Redis Streams to the worker; see
+[Background analysis](#background-analysis-redis-streams).
+
 ### Interactive run (WebSocket)
 
 US #10. The browser opens `wss://<host>/api/snippets/{snippetId}/run`; nginx strips `/api`, so this service
@@ -193,6 +219,7 @@ new WebSocket(url, ["snippet-run.v1", "bearer." + accessToken])
 | Message | Meaning |
 | --- | --- |
 | `{"type":"start"}` or `{"type":"start","mode":"interactive"}` | Starts a run. The first `start` opens the engine socket; after a `done`, another `start` re-runs on the same connection. Any other `mode` gets `rejected` / `MalformedMessage`. |
+| `{"type":"start","mode":"test","testId":"<uuid>"}` | Runs one of the snippet's tests (#9): its inputs are answered in order and `done` carries `passed`. A test of another snippet is `rejected` / `UnknownTest`; without `testId`, `MalformedMessage`. Not stored. |
 | `{"type":"input","value":"<string>"}` | Answers the prompt. Answers sent early are queued by the engine. |
 
 **Server → client:**
@@ -201,7 +228,7 @@ new WebSocket(url, ["snippet-run.v1", "bearer." + accessToken])
 | --- | --- |
 | `{"type":"output","line":"..."}` | Relayed from the engine. |
 | `{"type":"awaiting-input","prompt":"..."}` | Relayed from the engine. |
-| `{"type":"done","outputs":["..."],"error":null}` | Relayed from the engine; exactly one per run. `error` is `{rule, message, span}` (`span` can be `null`): a runtime error, `ExecutionTimeout`, `InputIdleTimeout`, `OutputLimitExceeded`, ... |
+| `{"type":"done","outputs":["..."],"error":null,"passed":null}` | Relayed from the engine; exactly one per run. `passed` is `true`/`false` in test mode, `null` otherwise. `error` is `{rule, message, span}` (`span` can be `null`): a runtime error, `ExecutionTimeout`, `InputIdleTimeout`, `OutputLimitExceeded`, ... |
 | `{"type":"rejected","title":"...","detail":"...","properties":{}}` | From the engine (`RunInProgress`, `NoInteractiveRun`, `TooManyInputs`, `UnsupportedVersion`, ...) or from this service (`MalformedMessage`, `NoInteractiveRun` before any `start`). The connection stays open. |
 | `{"type":"error","status":403,"title":"AccessDenied","detail":"..."}` | From this service, **always followed by a close** with code `4000 + status` and the title as the reason. |
 
@@ -228,13 +255,84 @@ npx wscat -c ws://localhost:8080/snippets/<id>/run -s snippet-run.v1 -s "bearer.
 > {"type":"start"}
 ```
 
+## Background analysis (Redis Streams)
+
+Lint, format, the snippet's tests and re-validation after a parser upgrade run in the background (US #12, #15,
+#16 and the Consigna). The API never waits for them.
+
+```
+ snippet-service (profile api)                 Redis 7                   snippet-worker (profile worker)
+ create / update / save rules ── XADD ──► snippet.analysis ── XREADGROUP ──► SnippetJobConsumer
+ (statuses already PENDING in Postgres)    group snippet-workers                │ ProcessSnippetJob
+                                                    │                           ├─ engine /validate /lint /format /test
+                                                    ▼                           ├─ formatted blob ──► Azure Blob
+                                           snippet.analysis.dlq ◄── gave up ────┴─ statuses ──► Postgres
+```
+
+**One image, two profiles.** `SPRING_PROFILES_ACTIVE=api` (or no profile) is the HTTP service: controllers,
+security, the run socket and the orphan cleanup; it only publishes. `SPRING_PROFILES_ACTIVE=worker` runs the same
+image with no web server (`application-worker.yml`): the consumer, the sweeper and the parser watcher, and no
+controller or security bean (`@Profile("!worker")`). Both use the same database, blob storage and engine settings.
+
+**The database is the source of truth, the stream is a doorbell.** Every write first stores the new statuses as
+`pending` (new version, rules saved, tests changed), then publishes a job. Publishing is best effort: if Redis is
+down, the request still succeeds and the sweeper finds the pending rows later.
+
+**Message** (`SnippetJobMessage`, all string fields): `type=snippet.analysis.v1`, `jobId`, `snippetId`,
+`versionId`, `tasks` (`VALIDATE,LINT,FORMAT,TEST`), `reason` (`CREATED`, `UPDATED`, `LINT_RULES_CHANGED`,
+`FORMAT_RULES_CHANGED`, `TESTS_CHANGED`, `PARSER_UPGRADED`, `SWEEP`), `testIds` (empty = all), `enqueuedAt`.
+The stream is capped with `MAXLEN ~ 100000`.
+
+**Processing** (`ProcessSnippetJobUseCase`). A job for a version that is no longer current, or a deleted snippet, is
+skipped (the newer version has its own job). Otherwise each task runs with the **owner's** rules and its result is
+saved as soon as it is known: validation (`invalid` code also becomes `not-compliant` with format `failed`), lint,
+format (blob `snippets/{snippetId}/versions/{versionId}/formatted`, overwritten on a re-run), and the tests (in
+batches of 10 per engine request). Running a job twice gives the same rows and the same blob.
+
+**Retries and failures** (`SnippetJobConsumer`, one thread, consumer name = `WORKER_CONSUMER_NAME` or the
+hostname):
+
+| Outcome | What happens |
+| --- | --- |
+| Success or skipped | `XACK`. |
+| Transient failure (engine, database, blob storage or permission service unavailable) | Not acknowledged. Every `claim-interval` (30 s) the worker claims entries idle for `claim-min-idle` (60 s), from any consumer, and runs them again. |
+| More than `max-deliveries` (5) deliveries, a permanent failure (e.g. a rule config the engine rejects), or a malformed message | The job's still-pending tasks become `failed` (tests `error`, issue `ProcessingFailed`), the entry is copied to `snippet.analysis.dlq` with `error` and `failedAt`, and acknowledged. The other snippets go on. |
+| Worker restarts | On start it creates the group if needed (`XGROUP CREATE ... 0 MKSTREAM`) and first replays its own unacknowledged entries. |
+
+**Sweeper** (`PendingAnalysisSweeper`, every `sweep-interval`, 5 min). Republishes current versions that have
+been `pending` for longer than `stale-after` (10 min), 200 at a time. This recovers a job lost because Redis was
+down, the API died between the database write and the `XADD`, or Redis lost data.
+
+**Parser re-validation** (`ParserVersionWatcher`, at startup and every `parser-check-interval`, 10 min). The
+engine's `GET /versions` reports `libraryVersion`. The worker keeps the last value it saw in the `worker_state`
+table (`engine.library-version.printscript`). When it changes, one transaction compare-and-sets that row and
+marks every current version `validation` + `lint` pending; then every snippet is published with
+`VALIDATE,LINT`. With several workers only the one that wins the compare-and-set requeues. The first run (no
+row yet) also formats, which back-fills snippets created before this pipeline existed.
+
+**Configuration** (env vars, defaults in `application.yml`): `REDIS_HOST` (`localhost`), `REDIS_PORT` (`6379`),
+`REDIS_PASSWORD` (empty), `WORKER_STREAM`, `WORKER_DLQ_STREAM`, `WORKER_GROUP`, `WORKER_CONSUMER_NAME`,
+`WORKER_MAX_DELIVERIES`, `WORKER_CLAIM_MIN_IDLE`, `WORKER_CLAIM_INTERVAL`, `WORKER_SWEEP_INTERVAL`,
+`WORKER_STALE_AFTER`, `WORKER_PARSER_CHECK_INTERVAL`.
+
+**Inspecting it locally:**
+
+```bash
+docker compose logs -f snippet-worker
+docker compose exec redis redis-cli XINFO GROUPS snippet.analysis     # lag, pending count
+docker compose exec redis redis-cli XPENDING snippet.analysis snippet-workers
+docker compose exec redis redis-cli XLEN snippet.analysis.dlq          # jobs given up
+docker compose exec redis redis-cli XRANGE snippet.analysis.dlq - + COUNT 10
+```
+
 ## Architecture
 
 ```
 com.ingsisbry.snippet
 ├── domain/                     Snippet, SnippetVersion, SnippetRules   (pure Kotlin)
 ├── application/
-│   ├── command/                create, update, delete, share, cleanup, run  (write side use cases)
+│   ├── command/                create, update, delete, share, cleanup, run, rules, tests, format,
+│   │                           process (background job), reprocess (sweeper, parser upgrade)
 │   ├── query/                  get, list, download, user search        (read side use cases)
 │   ├── port/out/               SnippetRepository, SnippetQueryRepository,
 │   │                           SnippetContentStorage, SnippetFilterValidator,
@@ -252,6 +350,8 @@ com.ingsisbry.snippet
     ├── auth0/                  user search in the Auth0 Management API
     ├── security/               JWT validation, scopes, current user, token forwarding
     ├── scheduling/             orphan cleanup job
+    ├── redis/                  stream publisher, stream client, message format
+    ├── worker/                 consumer, sweeper, parser watcher (profile `worker`)
     └── configuration/          Clock bean, scheduling
 ```
 
@@ -763,18 +863,16 @@ We would rather list these than have them discovered:
 
 - **Scheduled work has no user token.** The orphan cleanup doesn't call the permission service, so it is not
   affected, but any future background job that needs it will need its own machine-to-machine token.
-- **The author is shown as an Auth0 id.** Snippets store the owner's `sub` (`auth0|...`); showing the
-  owner's name would need a lookup in the user directory when listing.
 - **No unshare endpoint.** The permission service supports revoking a share, but this service doesn't expose
   it yet.
 - **Large `IN` lists.** Listing sends every accessible id in one query; fine for the expected volume, not for
   users with tens of thousands of snippets.
-- **Formatting isn't implemented.** `formattedContent` is never written, and
-  `download?version=formatted` currently returns the *original* content.
-- **`valid` is not persisted yet.** Every snippet reports `valid = true`, `valid=false` returns nothing and
-  `sortBy=valid` sorts by name. That is still correct today: create and update reject invalid code, so every
-  stored version passed the engine's `/validate`. A real flag only matters once snippets are re-validated
-  (a new parser version, the lint pipeline over Redis Streams), and it will be added with that pipeline.
+- **Results arrive a little later.** Lint, format and test results are eventually consistent: right after a
+  write the snippet is `pending` until the worker gets to it. Without a running worker it stays `pending`.
+- **Redis is a single node.** With AOF (`appendfsync everysec`) a crash can lose about a second of jobs; the
+  sweeper requeues them after `stale-after`. Redis being down never fails a request, it only delays the analysis.
+- **The dead-letter stream has no consumer.** Given-up jobs are only for inspection; the affected snippets show
+  `failed` and are analysed again on their next update or rules change.
 - **Runs use the saved version.** The run socket loads the snippet at handshake time and never accepts code
   from the client, so unsaved changes in the editor are not what runs.
 - **No foreign keys or migrations.** The schema comes from `ddl-auto: update`; there are no FKs between
@@ -800,6 +898,12 @@ We would rather list these than have them discovered:
   The permission adapter is tested against `MockRestServiceServer` (requests sent, the forwarded token, and
   every answer mapped to its error), and so are the Auth0 user search, the M2M token cache and the engine
   adapter (versions, validation with and without a span, retry once on 502/503/504, no token sent).
+- **Background analysis:** `ProcessSnippetJobUseCaseTest`, `FailSnippetJobUseCaseTest`,
+  `RevalidateOnParserUpgradeUseCaseTest` and `RequeueStaleAnalysesUseCaseTest` use in-memory fakes;
+  `SnippetJobConsumerTest` drives the consumer against a fake stream (ack, retry, give-up, replay);
+  `SnippetJobMessageTest` checks the stream fields; `JpaWorkerStatePersistenceTest` runs the compare-and-set and
+  the transaction rollback on H2; `WorkerContextTest` boots the real application with the `worker` profile and
+  checks that it serves no HTTP. No test needs Redis or Docker.
 - **Invalid code:** `InvalidSnippetContentResponseTest` (`@WebMvcTest`) checks the exact `400` JSON, with
   `rule`, `message` and `span` at the top level.
 - **Run socket:** `SnippetRunWebSocketHandlerTest` drives the handler with a fake session (error frames and

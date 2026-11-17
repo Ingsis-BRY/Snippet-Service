@@ -14,10 +14,14 @@ sealed interface RunEvent {
         val prompt: String,
     ) : RunEvent
 
-    /** The run ended; [error] is set when the code failed, timed out or waited too long for input. */
+    /**
+     * The run ended; [error] is set when the code failed, timed out or waited too long for input. [passed] is set
+     * only when the run was a test.
+     */
     data class Done(
         val outputs: List<String>,
         val error: RunIssue?,
+        val passed: Boolean? = null,
     ) : RunEvent
 
     /** A message was refused before anything ran (e.g. a run is already in progress); the session stays open. */

@@ -1,11 +1,12 @@
 package com.ingsisbry.snippet.adapter.language
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunIssue
 import tools.jackson.databind.json.JsonMapper
 
-/** Any message the engine sends on `/run/interactive`; `type` says which fields matter. `passed` is dropped. */
+/** Any message the engine sends on `/run/interactive`; `type` says which fields matter. */
 @JsonIgnoreProperties(ignoreUnknown = true)
 internal data class EngineRunMessage(
     val type: String?,
@@ -16,6 +17,7 @@ internal data class EngineRunMessage(
     val title: String?,
     val detail: String?,
     val properties: Map<String, Any?>?,
+    val passed: Boolean? = null,
 )
 
 internal object EngineRunMessages {
@@ -31,7 +33,7 @@ internal object EngineRunMessages {
         return when (message.type) {
             "output" -> RunEvent.Output(message.line.orEmpty())
             "awaiting-input" -> RunEvent.AwaitingInput(message.prompt.orEmpty())
-            "done" -> RunEvent.Done(message.outputs.orEmpty(), message.error?.toRunIssue())
+            "done" -> RunEvent.Done(message.outputs.orEmpty(), message.error?.toRunIssue(), message.passed)
             "rejected" ->
                 RunEvent.Rejected(
                     title = message.title.orEmpty(),
@@ -45,7 +47,7 @@ internal object EngineRunMessages {
     fun start(
         code: String,
         version: String,
-    ): Map<String, String> =
+    ): Map<String, Any> =
         linkedMapOf(
             "type" to "start",
             "mode" to "interactive",
@@ -53,7 +55,25 @@ internal object EngineRunMessages {
             "version" to version,
         )
 
-    fun input(value: String): Map<String, String> = linkedMapOf("type" to "input", "value" to value)
+    fun startTest(
+        code: String,
+        version: String,
+        test: TestSpec,
+    ): Map<String, Any> =
+        linkedMapOf(
+            "type" to "start",
+            "mode" to "test",
+            "code" to code,
+            "version" to version,
+            "test" to
+                linkedMapOf(
+                    "id" to test.id,
+                    "inputs" to test.inputs,
+                    "expectedOutputs" to test.expectedOutputs,
+                ),
+        )
+
+    fun input(value: String): Map<String, Any> = linkedMapOf("type" to "input", "value" to value)
 
     private fun EngineIssue.toRunIssue(): RunIssue = RunIssue(rule, message, span?.toSourceSpan())
 }

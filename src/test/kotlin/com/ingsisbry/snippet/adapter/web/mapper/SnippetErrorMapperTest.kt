@@ -13,8 +13,10 @@ import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.error.TestNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
+import com.ingsisbry.snippet.application.error.isTransient
 import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -46,6 +48,7 @@ class SnippetErrorMapperTest {
                 AlreadyShared(id, "enzo") to HttpStatus.CONFLICT,
                 PermissionServiceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
                 UserDirectoryUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
+                TestNotFound(id, id) to HttpStatus.NOT_FOUND,
             )
 
         expected.forEach { (error, status) ->
@@ -120,5 +123,26 @@ class SnippetErrorMapperTest {
         assertEquals(HttpStatus.BAD_REQUEST.value(), problem.status)
         assertEquals("UnsupportedLanguage", problem.title)
         assertEquals("Language printscript 9.9 is not supported", problem.detail)
+    }
+
+    @Test
+    fun `a missing test is a 404 titled TestNotFound`() {
+        val testId = UUID.randomUUID()
+
+        val problem = mapper.toResponse(TestNotFound(id, testId)).body!!
+
+        assertEquals("TestNotFound", problem.title)
+        assertEquals("Test $testId not found in snippet $id", problem.detail)
+    }
+
+    @Test
+    fun `only infrastructure errors are transient`() {
+        assertEquals(true, LanguageServiceUnavailable("down").isTransient())
+        assertEquals(true, ContentStoreUnavailable("k", "down").isTransient())
+        assertEquals(true, PersistenceUnavailable("down").isTransient())
+        assertEquals(true, PermissionServiceUnavailable("down").isTransient())
+        assertEquals(false, InvalidInput("bad").isTransient())
+        assertEquals(false, InvalidSnippetContent("r", "m", null).isTransient())
+        assertEquals(false, SnippetNotFound(id).isTransient())
     }
 }

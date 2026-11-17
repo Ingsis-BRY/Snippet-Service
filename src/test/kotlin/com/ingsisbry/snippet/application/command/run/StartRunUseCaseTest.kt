@@ -3,6 +3,7 @@ package com.ingsisbry.snippet.application.command.run
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.InteractiveRunner
 import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunListener
@@ -38,6 +39,8 @@ class StartRunUseCaseTest {
     private val session =
         object : RunSession {
             override fun start() = Unit
+
+            override fun startTest(test: TestSpec) = Unit
 
             override fun input(value: String) = Unit
 

@@ -9,6 +9,20 @@ spring:
     hibernate:
       ddl-auto: update
 
+  # Redis Streams carries the background analysis jobs (see `worker` below). Lettuce connects on first use.
+  data:
+    redis:
+      host: "${REDIS_HOST:localhost}"
+      port: "${REDIS_PORT:6379}"
+      password: "${REDIS_PASSWORD:}"
+      # the API only appends to the stream, best effort: with Redis down a request waits this long at most
+      # (the sweeper re-publishes later). The worker overrides it, since its reads block for `worker.block`.
+      timeout: "${REDIS_TIMEOUT:2s}"
+      connect-timeout: "${REDIS_CONNECT_TIMEOUT:1s}"
+      # no Redis repositories: Redis only holds the stream, the JPA repositories are the only ones
+      repositories:
+        enabled: false
+
   security:
     oauth2:
       resourceserver:
@@ -27,3 +41,28 @@ permission-service:
 
 engine:
   url: "${ENGINE_URL:http://engine-proxy:80}"
+  # /test runs up to ten tests one after another; every other engine call times out after 10 s
+  long-read-timeout: 300s
+
+# the languages offered to users; each needs an engine behind the proxy (X-Language: <name>)
+snippet:
+  languages:
+    - name: printscript
+      extensions: [prs, ps]
+
+# Background analysis (lint, format, tests, re-validation). The API (default or `api` profile) publishes to
+# `stream`; the `worker` profile consumes it in `group`. Durations accept 30s, 5m, ...
+worker:
+  stream: "${WORKER_STREAM:snippet.analysis}"
+  dead-letter-stream: "${WORKER_DLQ_STREAM:snippet.analysis.dlq}"
+  group: "${WORKER_GROUP:snippet-workers}"
+  consumer: "${WORKER_CONSUMER_NAME:${HOSTNAME:worker-1}}"
+  batch-size: 10
+  block: 2s
+  max-deliveries: "${WORKER_MAX_DELIVERIES:5}"
+  claim-min-idle: "${WORKER_CLAIM_MIN_IDLE:60s}"
+  claim-interval: "${WORKER_CLAIM_INTERVAL:30s}"
+  sweep-interval: "${WORKER_SWEEP_INTERVAL:5m}"
+  stale-after: "${WORKER_STALE_AFTER:10m}"
+  parser-check-interval: "${WORKER_PARSER_CHECK_INTERVAL:10m}"
+  stream-max-length: 100000

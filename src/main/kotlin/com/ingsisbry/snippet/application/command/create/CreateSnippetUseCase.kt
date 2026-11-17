@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.application.command.create
 
+import com.ingsisbry.snippet.application.command.common.SnippetChangeNotifier
 import com.ingsisbry.snippet.application.command.common.storeThenPersist
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidInput
@@ -24,6 +25,7 @@ class CreateSnippetUseCase(
     private val supportedLanguages: SupportedLanguages,
     private val contentValidator: SnippetContentValidator,
     private val permissions: SnippetPermissions,
+    private val changes: SnippetChangeNotifier,
     private val clock: Clock,
 ) : CreateSnippet {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -47,6 +49,7 @@ class CreateSnippetUseCase(
             .flatMap { contentValidator.validate(command.language, command.languageVersion, command.content) }
             .flatMap { store(command) }
             .flatMap { snippet -> registerOwner(snippet) }
+            .onSuccess { snippet -> changes.created(snippet) }
     }
 
     /**

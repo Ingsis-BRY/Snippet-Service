@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.language
 
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunIssue
 import com.ingsisbry.snippet.support.SAMPLE_SPAN
@@ -69,6 +70,21 @@ class EngineRunMessagesTest {
             json.writeValueAsString(EngineRunMessages.start("println(1);", "1.1")),
         )
         assertEquals("""{"type":"input","value":"Ana"}""", json.writeValueAsString(EngineRunMessages.input("Ana")))
+    }
+
+    @Test
+    fun `a test run's start carries the test and its done says whether it passed`() {
+        assertEquals(
+            """{"type":"start","mode":"test","code":"println(1);","version":"1.1",""" +
+                """"test":{"id":"t1","inputs":["a"],"expectedOutputs":["1"]}}""",
+            json.writeValueAsString(
+                EngineRunMessages.startTest("println(1);", "1.1", TestSpec("t1", listOf("a"), listOf("1"))),
+            ),
+        )
+        assertEquals(
+            RunEvent.Done(listOf("1"), null, passed = true),
+            parse("""{"type":"done","outputs":["1"],"error":null,"passed":true}"""),
+        )
     }
 
     @Test

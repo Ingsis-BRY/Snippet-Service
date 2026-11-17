@@ -5,6 +5,7 @@ import com.ingsisbry.snippet.adapter.web.dto.response.UserPageResponse
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
 import com.ingsisbry.snippet.application.query.user.SearchUsers
 import com.ingsisbry.snippet.application.query.user.SearchUsersQuery
+import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
+@Profile("!worker")
 @RequestMapping("/users")
 class UserController(
     private val searchUsers: SearchUsers,

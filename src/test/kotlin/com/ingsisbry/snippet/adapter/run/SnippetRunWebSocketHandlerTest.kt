@@ -1,6 +1,7 @@
 package com.ingsisbry.snippet.adapter.run
 
 import com.ingsisbry.snippet.adapter.web.mapper.SnippetErrorMapper
+import com.ingsisbry.snippet.application.analysis.TestStatus
 import com.ingsisbry.snippet.application.command.run.StartRun
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.AccessDenied
@@ -8,11 +9,14 @@ import com.ingsisbry.snippet.application.error.InvalidInput
 import com.ingsisbry.snippet.application.error.LanguageServiceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 import com.ingsisbry.snippet.application.port.out.run.RunEvent
 import com.ingsisbry.snippet.application.port.out.run.RunIssue
 import com.ingsisbry.snippet.application.port.out.run.RunListener
 import com.ingsisbry.snippet.application.port.out.run.RunSession
+import com.ingsisbry.snippet.application.query.tests.SnippetTestView
 import com.ingsisbry.snippet.domain.Snippet
+import com.ingsisbry.snippet.domain.test.SnippetTest
 import com.ingsisbry.snippet.support.FakeWebSocketSession
 import com.ingsisbry.snippet.support.SAMPLE_SPAN
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -38,6 +42,16 @@ class SnippetRunWebSocketHandlerTest {
             owner = USER,
             content = "println(readInput(\"Name:\"));",
             versionId = UUID.randomUUID(),
+            createdAt = Instant.parse("2026-11-17T00:00:00Z"),
+        )
+
+    private val test =
+        SnippetTest(
+            id = UUID.fromString("33333333-3333-3333-3333-333333333333"),
+            snippetId = snippetId,
+            name = "greets",
+            inputs = listOf("Ana"),
+            expectedOutputs = listOf("Hi Ana"),
             createdAt = Instant.parse("2026-11-17T00:00:00Z"),
         )
 
@@ -137,13 +151,64 @@ class SnippetRunWebSocketHandlerTest {
     }
 
     @Test
-    fun `test mode is rejected`() {
+    fun `an unknown mode is rejected`() {
+        val session = connect()
+
+        send(session, """{"type":"start","mode":"debug"}""")
+
+        val frame = frame(session.sent.single())
+        assertEquals("MalformedMessage", frame["title"])
+        assertEquals("'mode' must be 'interactive' or 'test'.", frame["detail"])
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `test mode without a test id is rejected`() {
         val session = connect()
 
         send(session, """{"type":"start","mode":"test"}""")
 
-        assertEquals("MalformedMessage", frame(session.sent.single())["title"])
+        val frame = frame(session.sent.single())
+        assertEquals("MalformedMessage", frame["title"])
+        assertEquals("'test' mode needs a 'testId'.", frame["detail"])
         assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `a test of another snippet is rejected as UnknownTest`() {
+        val session = connect()
+        val stranger = UUID.randomUUID()
+
+        send(session, """{"type":"start","mode":"test","testId":"$stranger"}""")
+
+        val frame = frame(session.sent.single())
+        assertEquals("rejected", frame["type"])
+        assertEquals("UnknownTest", frame["title"])
+        assertEquals("Test $stranger does not belong to this snippet.", frame["detail"])
+        assertTrue(opened.isEmpty())
+        assertNull(session.closeStatus)
+    }
+
+    @Test
+    fun `test mode runs the snippet's test with its inputs and expected outputs`() {
+        val session = connect()
+
+        send(session, """{"type":"start","mode":"test","testId":"${test.id}"}""")
+
+        assertEquals(listOf(snippet), opened)
+        assertEquals(listOf(TestSpec(test.id.toString(), listOf("Ana"), listOf("Hi Ana"))), runSession.testStarts)
+        assertEquals(0, runSession.starts)
+        assertTrue(session.sent.isEmpty())
+    }
+
+    @Test
+    fun `a test run's done frame says whether it passed`() {
+        val session = connect()
+        send(session, """{"type":"start","mode":"test","testId":"${test.id}"}""")
+
+        checkNotNull(listener).onEvent(RunEvent.Done(listOf("Hi Ana"), null, passed = true))
+
+        assertEquals("""{"type":"done","outputs":["Hi Ana"],"error":null,"passed":true}""", session.sent.single())
     }
 
     @Test
@@ -174,8 +239,8 @@ class SnippetRunWebSocketHandlerTest {
                 """{"type":"rejected","title":"RunInProgress","detail":"A run is in progress.",""" +
                     """"properties":{"limit":1}}""",
                 """{"type":"done","outputs":["Hello","Ana"],"error":{"rule":"DivisionByZero","message":"Zero",""" +
-                    """"span":{"start":{"line":1,"column":17},"end":{"line":1,"column":17}}}}""",
-                """{"type":"done","outputs":["ok"],"error":null}""",
+                    """"span":{"start":{"line":1,"column":17},"end":{"line":1,"column":17}}},"passed":null}""",
+                """{"type":"done","outputs":["ok"],"error":null,"passed":null}""",
             ),
             session.sent,
         )
@@ -219,7 +284,12 @@ class SnippetRunWebSocketHandlerTest {
 
     private fun connect(error: SnippetError? = null): FakeWebSocketSession {
         val attributes = mutableMapOf<String, Any>(RunAttributes.USER_ID to USER, RunAttributes.SNIPPET_ID to snippetId)
-        if (error == null) attributes[RunAttributes.SNIPPET] = snippet else attributes[RunAttributes.ERROR] = error
+        if (error == null) {
+            attributes[RunAttributes.SNIPPET] = snippet
+            attributes[RunAttributes.TESTS] = listOf(SnippetTestView(test, TestStatus.PENDING, null, null, null))
+        } else {
+            attributes[RunAttributes.ERROR] = error
+        }
         val session = FakeWebSocketSession(attributes)
         handler.afterConnectionEstablished(session)
         return session
@@ -237,11 +307,16 @@ class SnippetRunWebSocketHandlerTest {
 
     private class FakeRunSession : RunSession {
         var starts = 0
+        val testStarts = mutableListOf<TestSpec>()
         val inputs = mutableListOf<String>()
         var closed = false
 
         override fun start() {
             starts++
+        }
+
+        override fun startTest(test: TestSpec) {
+            testStarts += test
         }
 
         override fun input(value: String) {

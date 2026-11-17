@@ -78,3 +78,16 @@ data class PermissionServiceUnavailable(
 data class UserDirectoryUnavailable(
     val reason: String?,
 ) : SnippetError
+
+/** The snippet has no test with that id. */
+data class TestNotFound(
+    val snippetId: UUID,
+    val testId: UUID,
+) : SnippetError
+
+/** Transient errors are retried by the worker; others mark the job failed at once. */
+fun SnippetError.isTransient(): Boolean =
+    this is LanguageServiceUnavailable ||
+        this is ContentStoreUnavailable ||
+        this is PersistenceUnavailable ||
+        this is PermissionServiceUnavailable

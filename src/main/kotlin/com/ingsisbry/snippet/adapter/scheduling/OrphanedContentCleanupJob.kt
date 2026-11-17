@@ -2,10 +2,12 @@ package com.ingsisbry.snippet.adapter.scheduling
 
 import com.ingsisbry.snippet.application.command.cleanup.DeleteOrphanedContent
 import org.slf4j.LoggerFactory
+import org.springframework.context.annotation.Profile
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
 @Component
+@Profile("!worker")
 class OrphanedContentCleanupJob(
     private val deleteOrphanedContent: DeleteOrphanedContent,
 ) {

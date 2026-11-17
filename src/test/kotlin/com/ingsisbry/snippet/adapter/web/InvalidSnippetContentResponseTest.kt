@@ -15,7 +15,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.query.download.DownloadSnippet
-import com.ingsisbry.snippet.application.query.get.GetSnippet
+import com.ingsisbry.snippet.application.query.get.GetSnippetDetails
 import com.ingsisbry.snippet.application.query.list.ListSnippets
 import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Test
@@ -48,7 +48,7 @@ class InvalidSnippetContentResponseTest {
     private lateinit var createSnippet: CreateSnippet
 
     @MockitoBean
-    private lateinit var getSnippet: GetSnippet
+    private lateinit var getSnippetDetails: GetSnippetDetails
 
     @MockitoBean
     private lateinit var updateSnippet: UpdateSnippet

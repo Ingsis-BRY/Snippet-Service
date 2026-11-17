@@ -1,0 +1,10 @@
+# Profile `worker` (SPRING_PROFILES_ACTIVE=worker): the same image as the API, consuming the analysis stream.
+# No HTTP server, no controllers, no security filter chain; the consumer thread and the schedulers keep it running.
+spring:
+  main:
+    web-application-type: none
+    keep-alive: true
+  data:
+    redis:
+      # longer than the consumer's XREADGROUP BLOCK (worker.block, 2s)
+      timeout: "${REDIS_TIMEOUT:10s}"

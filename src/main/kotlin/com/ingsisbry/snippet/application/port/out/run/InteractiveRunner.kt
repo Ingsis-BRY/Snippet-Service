@@ -2,6 +2,7 @@ package com.ingsisbry.snippet.application.port.out.run
 
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetError
+import com.ingsisbry.snippet.application.port.out.language.TestSpec
 
 /** Receives what a run reports. Called from the runner's own threads. */
 interface RunListener {
@@ -15,6 +16,9 @@ interface RunListener {
 interface RunSession {
     /** Starts a run; the engine rejects it while another run is in progress. */
     fun start()
+
+    /** Runs the code as [test]: its inputs are answered in order, and `done` says whether it passed (US#9). */
+    fun startTest(test: TestSpec)
 
     /** Answers the current prompt; answers sent early are queued by the engine. */
     fun input(value: String)

@@ -4,6 +4,10 @@ import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.JpaSnippetVersionRepository
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.SnippetVersionEntity
+import com.ingsisbry.snippet.adapter.persistence.tests.JpaSnippetTestRepository
+import com.ingsisbry.snippet.application.analysis.FormatStatus
+import com.ingsisbry.snippet.application.analysis.LintStatus
+import com.ingsisbry.snippet.application.analysis.ValidationStatus
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
@@ -21,6 +25,7 @@ import java.util.UUID
 class JpaSnippetRepositoryAdapter(
     private val repository: JpaSnippetRepository,
     private val versionRepository: JpaSnippetVersionRepository,
+    private val testRepository: JpaSnippetTestRepository,
     private val transactionTemplate: TransactionTemplate,
 ) : SnippetRepository {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -52,6 +57,11 @@ class JpaSnippetRepositoryAdapter(
                     originalContentKey = originalContentKey,
                     formattedContentKey = null,
                     createdAt = version.createdAt,
+                    // the content was validated synchronously; lint and format run in the background
+                    validationStatus = ValidationStatus.VALID.name,
+                    lintStatus = LintStatus.PENDING.name,
+                    formatStatus = FormatStatus.PENDING.name,
+                    analysisRequestedAt = version.createdAt,
                 ),
             )
 
@@ -86,6 +96,7 @@ class JpaSnippetRepositoryAdapter(
                     )
                 }.distinct()
 
+        testRepository.deleteAllBySnippetId(id)
         versionRepository.deleteAll(versions)
         repository.delete(snippet)
 

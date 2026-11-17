@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.adapter.persistence.query
 
+import com.ingsisbry.snippet.adapter.persistence.analysis.toAnalysis
 import com.ingsisbry.snippet.adapter.persistence.query.filter.SnippetFilterRegistry
 import com.ingsisbry.snippet.adapter.persistence.query.mapper.SnippetListItemMapper
 import com.ingsisbry.snippet.adapter.persistence.query.sorting.SnippetSortFactory
@@ -8,6 +9,7 @@ import com.ingsisbry.snippet.adapter.persistence.snippet.JpaSnippetRepository
 import com.ingsisbry.snippet.adapter.persistence.snippet.SnippetEntity
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.JpaSnippetVersionRepository
 import com.ingsisbry.snippet.adapter.persistence.snippetversion.SnippetVersionEntity
+import com.ingsisbry.snippet.application.analysis.FormatStatus
 import com.ingsisbry.snippet.application.common.pagination.PageResult
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
@@ -61,9 +63,14 @@ class JpaSnippetQueryRepositoryAdapter(
                 .and(filterRegistry.toSpecification(query.filters))
 
         val result = repository.findAll(specification, pageable)
+        // one query for the statuses of the whole page
+        val analyses =
+            versionRepository
+                .findAllById(result.content.map { it.currentVersionId })
+                .associate { it.id to it.toAnalysis() }
 
         return PageResult(
-            content = result.content.map(SnippetListItemMapper::toListItem),
+            content = result.content.map { SnippetListItemMapper.toListItem(it, analyses[it.currentVersionId]) },
             page = result.number,
             size = result.size,
             totalElements = result.totalElements,
@@ -132,8 +139,13 @@ class JpaSnippetQueryRepositoryAdapter(
         }
     }
 
+    /**
+     * The stored formatted blob counts only while its format is FINISHED. Once a rule change marks the format
+     * PENDING, or a reformat FAILED, the blob was made with older rules, so it is left out (US#12/#13).
+     */
     private fun retrieveFormattedContent(version: SnippetVersionEntity): Result<SnippetError, String?> =
         version.formattedContentKey
+            ?.takeIf { version.formatStatus == FormatStatus.FINISHED.name }
             ?.let { key -> contentStorage.retrieve(key) }
             ?: Result.Success(null)
 }

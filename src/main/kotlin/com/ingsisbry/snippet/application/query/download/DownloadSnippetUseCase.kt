@@ -1,5 +1,6 @@
 package com.ingsisbry.snippet.application.query.download
 
+import com.ingsisbry.snippet.application.command.format.OwnerFormatter
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.port.out.permission.SnippetAction
@@ -14,6 +15,7 @@ import java.util.UUID
 class DownloadSnippetUseCase(
     private val snippetQueryRepository: SnippetQueryRepository,
     private val permissions: SnippetPermissions,
+    private val ownerFormatter: OwnerFormatter,
 ) : DownloadSnippet {
     override fun execute(
         id: UUID,
@@ -28,17 +30,25 @@ class DownloadSnippetUseCase(
         id: UUID,
         variant: SnippetContentVariant,
     ): Result<SnippetError, String> =
-        snippetQueryRepository.findById(id).map { snippet ->
+        snippetQueryRepository.findById(id).flatMap { snippet ->
             when (variant) {
-                SnippetContentVariant.ORIGINAL ->
-                    getOriginalContent(snippet)
-
-                SnippetContentVariant.FORMATTED ->
-                    getFormattedContent(snippet)
+                SnippetContentVariant.ORIGINAL -> Result.Success(snippet.currentVersion.originalContent)
+                SnippetContentVariant.FORMATTED -> formattedContent(snippet)
             }
         }
 
-    private fun getOriginalContent(snippet: Snippet): String = snippet.currentVersion.originalContent
-
-    private fun getFormattedContent(snippet: Snippet): String = snippet.currentVersion.originalContent
+    /**
+     * The worker stores the formatted version in the background (US#13). Until it has, the snippet is formatted
+     * now with its owner's rules, and that result is not stored.
+     */
+    private fun formattedContent(snippet: Snippet): Result<SnippetError, String> =
+        snippet.currentVersion.formattedContent
+            ?.let { Result.Success(it) }
+            ?: ownerFormatter
+                .format(
+                    snippet.owner,
+                    snippet.language,
+                    snippet.languageVersion,
+                    snippet.currentVersion.originalContent,
+                ).map { it.formatted }
 }
