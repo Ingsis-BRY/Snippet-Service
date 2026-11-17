@@ -13,6 +13,8 @@ import com.ingsisbry.snippet.application.error.SnippetConflict
 import com.ingsisbry.snippet.application.error.SnippetCorrupted
 import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
+import com.ingsisbry.snippet.application.error.SourcePosition
+import com.ingsisbry.snippet.application.error.SourceSpan
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
 import org.springframework.http.HttpStatus
@@ -37,9 +39,7 @@ class SnippetErrorMapper {
                     HttpStatus.SERVICE_UNAVAILABLE to "Permission service is unavailable"
                 is UserDirectoryUnavailable ->
                     HttpStatus.SERVICE_UNAVAILABLE to "User directory is unavailable"
-                is InvalidSnippetContent ->
-                    HttpStatus.BAD_REQUEST to
-                        "Snippet breaks the rule '${error.rule}' at line ${error.line}, column ${error.column}"
+                is InvalidSnippetContent -> HttpStatus.BAD_REQUEST to invalidContentDetail(error)
                 is UnsupportedLanguage ->
                     HttpStatus.BAD_REQUEST to "Language ${error.language} ${error.languageVersion} is not supported"
                 is LanguageServiceUnavailable -> HttpStatus.SERVICE_UNAVAILABLE to "Language service is unavailable"
@@ -49,8 +49,41 @@ class SnippetErrorMapper {
                 is SnippetCorrupted -> HttpStatus.INTERNAL_SERVER_ERROR to "Snippet data is inconsistent"
             }
 
+        val problem = ProblemDetail.forStatusAndDetail(status, detail)
+        when (error) {
+            is InvalidSnippetContent -> {
+                problem.title = "InvalidSnippetContent"
+                problem.setProperty("rule", error.rule)
+                problem.setProperty("message", error.message)
+                problem.setProperty("span", error.span?.let(::spanProperty))
+            }
+            is UnsupportedLanguage -> problem.title = "UnsupportedLanguage"
+            else -> Unit
+        }
+
         return ResponseEntity
             .status(status)
-            .body(ProblemDetail.forStatusAndDetail(status, detail))
+            .body(problem)
     }
+
+    private fun invalidContentDetail(error: InvalidSnippetContent): String {
+        val start = error.span?.start
+        return if (start == null) {
+            "Snippet breaks the rule '${error.rule}': ${error.message}"
+        } else {
+            "Snippet breaks the rule '${error.rule}' at line ${start.line}, column ${start.column}: ${error.message}"
+        }
+    }
+
+    private fun spanProperty(span: SourceSpan): Map<String, Map<String, Int>> =
+        mapOf(
+            "start" to positionProperty(span.start),
+            "end" to positionProperty(span.end),
+        )
+
+    private fun positionProperty(position: SourcePosition): Map<String, Int> =
+        mapOf(
+            "line" to position.line,
+            "column" to position.column,
+        )
 }

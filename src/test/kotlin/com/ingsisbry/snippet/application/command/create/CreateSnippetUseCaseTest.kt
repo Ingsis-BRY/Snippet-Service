@@ -3,7 +3,6 @@ package com.ingsisbry.snippet.application.command.create
 import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.ContentStoreUnavailable
 import com.ingsisbry.snippet.application.error.InvalidInput
-import com.ingsisbry.snippet.application.error.InvalidSnippetContent
 import com.ingsisbry.snippet.application.error.PermissionServiceUnavailable
 import com.ingsisbry.snippet.application.error.PersistenceUnavailable
 import com.ingsisbry.snippet.application.error.SnippetConflict
@@ -15,6 +14,7 @@ import com.ingsisbry.snippet.application.port.out.language.SupportedLanguages
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.ingsisbry.snippet.domain.Snippet
 import com.ingsisbry.snippet.support.FakeSnippetPermissions
+import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -78,13 +78,13 @@ class CreateSnippetUseCaseTest {
     @Test
     fun `execute should reject content that breaks a language rule without touching storage or database`() {
         // given
-        contentValidation = Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7))
+        contentValidation = Result.Failure(SAMPLE_INVALID_CONTENT)
 
         // when
         val result = useCase.execute(command)
 
         // then
-        assertEquals(Result.Failure(InvalidSnippetContent("no-unused-vars", 3, 7)), result)
+        assertEquals(Result.Failure(SAMPLE_INVALID_CONTENT), result)
         Mockito.verifyNoInteractions(snippetRepository, contentStorage)
     }
 

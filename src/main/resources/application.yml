@@ -24,3 +24,6 @@ auth0:
 
 permission-service:
   url: "${PERMISSION_SERVICE_URL:http://snippet-permission-service:8080}"
+
+engine:
+  url: "${ENGINE_URL:http://engine-proxy:80}"

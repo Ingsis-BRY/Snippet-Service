@@ -15,8 +15,11 @@ import com.ingsisbry.snippet.application.error.SnippetError
 import com.ingsisbry.snippet.application.error.SnippetNotFound
 import com.ingsisbry.snippet.application.error.UnsupportedLanguage
 import com.ingsisbry.snippet.application.error.UserDirectoryUnavailable
+import com.ingsisbry.snippet.support.SAMPLE_INVALID_CONTENT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpStatus
 import java.util.UUID
@@ -32,7 +35,7 @@ class SnippetErrorMapperTest {
                 SnippetNotFound(id) to HttpStatus.NOT_FOUND,
                 SnippetConflict(id) to HttpStatus.CONFLICT,
                 InvalidInput("bad") to HttpStatus.BAD_REQUEST,
-                InvalidSnippetContent("no-unused-vars", 3, 7) to HttpStatus.BAD_REQUEST,
+                InvalidSnippetContent("UnexpectedToken", "Expected an expression", null) to HttpStatus.BAD_REQUEST,
                 UnsupportedLanguage("Python", "3") to HttpStatus.BAD_REQUEST,
                 LanguageServiceUnavailable("down") to HttpStatus.SERVICE_UNAVAILABLE,
                 ContentStoreUnavailable("key", "down") to HttpStatus.SERVICE_UNAVAILABLE,
@@ -82,5 +85,40 @@ class SnippetErrorMapperTest {
         val response = mapper.toResponse(InvalidInput("Size must be between 1 and 100"))
 
         assertEquals("Size must be between 1 and 100", response.body?.detail)
+    }
+
+    @Test
+    fun `invalid content names the rule, its position and the engine's message`() {
+        val problem = mapper.toResponse(SAMPLE_INVALID_CONTENT).body!!
+
+        assertEquals("InvalidSnippetContent", problem.title)
+        assertEquals(
+            "Snippet breaks the rule 'UnexpectedToken' at line 1, column 17: Expected an expression",
+            problem.detail,
+        )
+        assertEquals("UnexpectedToken", problem.properties?.get("rule"))
+        assertEquals("Expected an expression", problem.properties?.get("message"))
+        assertEquals(
+            mapOf("start" to mapOf("line" to 1, "column" to 17), "end" to mapOf("line" to 1, "column" to 17)),
+            problem.properties?.get("span"),
+        )
+    }
+
+    @Test
+    fun `invalid content without a position leaves the position out of the detail`() {
+        val problem = mapper.toResponse(InvalidSnippetContent("NestingTooDeep", "Too deep", null)).body!!
+
+        assertEquals("Snippet breaks the rule 'NestingTooDeep': Too deep", problem.detail)
+        assertTrue(problem.properties!!.containsKey("span"))
+        assertNull(problem.properties?.get("span"))
+    }
+
+    @Test
+    fun `an unsupported language is titled as such`() {
+        val problem = mapper.toResponse(UnsupportedLanguage("printscript", "9.9")).body!!
+
+        assertEquals(HttpStatus.BAD_REQUEST.value(), problem.status)
+        assertEquals("UnsupportedLanguage", problem.title)
+        assertEquals("Language printscript 9.9 is not supported", problem.detail)
     }
 }

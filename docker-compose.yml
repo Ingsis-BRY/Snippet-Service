@@ -22,6 +22,13 @@ services:
       AUTH0_AUDIENCE: "${AUTH0_AUDIENCE}"
       AUTH0_M2M_CLIENT_ID: "${AUTH0_M2M_CLIENT_ID}"
       AUTH0_M2M_CLIENT_SECRET: "${AUTH0_M2M_CLIENT_SECRET}"
+      ENGINE_URL: "${ENGINE_URL:-http://engine-proxy:80}"
+
+    # `default` must be listed, or the service would leave the compose network; `snippet-searcher` is
+    # where printscript-engine's compose puts its `engine-proxy`
+    networks:
+      - default
+      - snippet-searcher
 
     depends_on:
       - postgres
@@ -77,6 +84,12 @@ services:
       - "${AZURITE_PORT}:10000"
     volumes:
       - azurite-data:/workspace
+
+networks:
+  # created by printscript-engine's compose (start it first)
+  snippet-searcher:
+    external: true
+    name: snippet-searcher
 
 volumes:
   postgres-data:

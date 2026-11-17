@@ -9,6 +9,7 @@ dependencies {
 
     implementation("com.azure:azure-storage-blob:12.33.0")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
     testImplementation("com.playtika.testcontainers:embedded-azurite:3.1.6")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
