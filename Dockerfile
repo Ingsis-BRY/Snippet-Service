@@ -28,6 +28,10 @@ RUN --mount=type=cache,target=/tmp/newrelic-cache \
 
 FROM eclipse-temurin:21-jre
 
+# curl for the Swarm healthcheck (GET /actuator/health/readiness). No HEALTHCHECK here: the same image runs the
+# worker profile, which serves no HTTP; the healthcheck is declared per service in the stack.
+RUN apt-get update &&     apt-get install -y --no-install-recommends curl &&     rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder /app/build/libs/*.jar app.jar

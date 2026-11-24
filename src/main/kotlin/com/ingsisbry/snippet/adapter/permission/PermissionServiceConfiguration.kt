@@ -12,11 +12,13 @@ import java.time.Duration
 class PermissionServiceConfiguration {
     @Bean
     fun permissionServiceClient(
+        // Spring's builder, instrumented with the observation registry: the call carries the W3C `traceparent`
+        builder: RestClient.Builder,
         @Value("\${permission-service.url}")
         baseUrl: String,
     ): RestClient =
-        RestClient
-            .builder()
+        builder
+            .clone()
             .baseUrl(baseUrl)
             .requestInterceptor(BearerTokenForwarder())
             // Fail fast instead of hanging a request thread when the permission service is down.

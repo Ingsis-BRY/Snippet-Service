@@ -15,7 +15,31 @@ env:
   IMAGE_NAME: ingsis-bry/snippet-service
 
 jobs:
+  # the same check as CI.yml: an image is only published from a commit whose tests, ktlint and detekt pass
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run check
+        run: ./gradlew check
+        env:
+          USERNAME: ${{ secrets.GH_PACKAGES_USERNAME }}
+          TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
   publish:
+    needs: check
     runs-on: ubuntu-latest
 
     steps:

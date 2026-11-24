@@ -12,6 +12,13 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     // Redis Streams: the API publishes analysis jobs, the `worker` profile consumes them
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    // /actuator/health (liveness/readiness) for the Swarm healthcheck
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // the auto-configured RestClient.Builder, instrumented with the observation registry (traceparent propagation)
+    implementation("org.springframework.boot:spring-boot-starter-restclient")
+    // Micrometer Tracing over Brave: traceId/spanId in the MDC and W3C traceparent on outgoing calls; no exporter
+    implementation("org.springframework.boot:spring-boot-micrometer-tracing-brave")
+    implementation("io.micrometer:micrometer-tracing-bridge-brave")
     testImplementation("com.playtika.testcontainers:embedded-azurite:3.1.6")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
