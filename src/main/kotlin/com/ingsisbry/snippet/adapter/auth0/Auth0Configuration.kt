@@ -11,11 +11,13 @@ import java.time.Duration
 class Auth0Configuration {
     @Bean
     fun auth0Client(
+        // Spring's builder, instrumented with the observation registry (the calls show up in the trace)
+        builder: RestClient.Builder,
         @Value("\${auth0.domain}")
         domain: String,
     ): RestClient =
-        RestClient
-            .builder()
+        builder
+            .clone()
             .baseUrl("https://$domain")
             .requestFactory(
                 SimpleClientHttpRequestFactory().apply {

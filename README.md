@@ -325,6 +325,23 @@ docker compose exec redis redis-cli XLEN snippet.analysis.dlq          # jobs gi
 docker compose exec redis redis-cli XRANGE snippet.analysis.dlq - + COUNT 10
 ```
 
+## Operations
+
+**Health.** `GET /actuator/health`, `/actuator/health/liveness` and `/actuator/health/readiness` answer
+`{"status":"UP"}` without a token and without details; no other actuator endpoint is exposed. Swarm's healthcheck
+runs `curl -fsS http://localhost:8080/actuator/health/readiness` (the runtime image ships `curl`). The image has no
+`HEALTHCHECK` of its own because the worker profile serves no HTTP, so the stack disables it for the worker.
+
+**JSON logs.** Set `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` to log one ECS JSON object per line (Spring Boot's
+structured logging; `service.name` is `snippet-service`). Unset, the logs are plain text.
+
+**Tracing.** Micrometer Tracing over Brave samples every request (`management.tracing.sampling.probability: 1.0`)
+and exports nothing: each request's `traceId` / `spanId` go to the MDC, so they appear in the JSON logs, and calls
+to the permission service, the engine and Auth0 carry the W3C `traceparent` header (the `RestClient`s come from
+Spring's instrumented `RestClient.Builder`). A job published to Redis carries the request's trace id in the
+optional `traceId` field; while the worker processes it, the id is in the MDC as `jobTraceId` (`traceId` belongs to
+the worker's own spans). Search the logs for one id in `traceId` or `jobTraceId` to follow a change end to end.
+
 ## Architecture
 
 ```

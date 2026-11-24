@@ -7,6 +7,7 @@ import com.ingsisbry.snippet.application.common.result.Result
 import com.ingsisbry.snippet.application.error.isTransient
 import com.ingsisbry.snippet.application.job.SnippetJob
 import org.slf4j.LoggerFactory
+import org.slf4j.MDC
 import org.springframework.context.SmartLifecycle
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
@@ -22,6 +23,10 @@ import java.time.Instant
  * - Permanent failure, a malformed entry, or more than `max-deliveries` deliveries: its pending tasks are marked
  *   failed, the entry is copied to the dead-letter stream and acknowledged, and the worker moves on.
  * - On start, entries this consumer had received but not acknowledged before it stopped are replayed first.
+ *
+ * While a job runs, the trace id of the request that published it is in the MDC as `jobTraceId`. It is not put
+ * under `traceId`: Micrometer Tracing owns that key and rewrites it whenever a span opens or closes (the worker's
+ * own engine calls are traced), so the producer's id would be lost or mixed with the worker's spans.
  */
 @Component
 @Profile("worker")
@@ -121,24 +126,26 @@ class SnippetJobConsumer(
 
     @Suppress("TooGenericExceptionCaught")
     fun handle(entry: StreamEntry) {
-        val job = SnippetJobMessage.fromFields(entry.fields)
-        if (job == null) {
-            giveUp(entry, null, MALFORMED)
-            return
-        }
-        try {
-            when (val result = processSnippetJob.execute(job)) {
-                is Result.Success -> stream.ack(entry.id)
-                is Result.Failure ->
-                    if (result.error.isTransient()) {
-                        logger.warn("Job {} will be retried: {}", jobId(entry), result.error)
-                    } else {
-                        giveUp(entry, job, result.error.toString())
-                    }
+        withJobTraceId(SnippetJobMessage.traceId(entry.fields)) {
+            val job = SnippetJobMessage.fromFields(entry.fields)
+            if (job == null) {
+                giveUp(entry, null, MALFORMED)
+                return
             }
-        } catch (exception: RuntimeException) {
-            // left unacknowledged: the claim retries it, and max-deliveries ends it if it keeps failing
-            logger.error("Job {} for snippet {} failed unexpectedly", jobId(entry), job.snippetId, exception)
+            try {
+                when (val result = processSnippetJob.execute(job)) {
+                    is Result.Success -> stream.ack(entry.id)
+                    is Result.Failure ->
+                        if (result.error.isTransient()) {
+                            logger.warn("Job {} will be retried: {}", jobId(entry), result.error)
+                        } else {
+                            giveUp(entry, job, result.error.toString())
+                        }
+                }
+            } catch (exception: RuntimeException) {
+                // left unacknowledged: the claim retries it, and max-deliveries ends it if it keeps failing
+                logger.error("Job {} for snippet {} failed unexpectedly", jobId(entry), job.snippetId, exception)
+            }
         }
     }
 
@@ -180,6 +187,8 @@ class SnippetJobConsumer(
         /** For the logs: the producer's job id, or the stream id of a malformed entry. */
         private fun jobId(entry: StreamEntry): String = entry.fields[SnippetJobMessage.FIELD_JOB_ID] ?: entry.id
 
+        /** MDC key: the trace id of the request that published the job being processed. */
+        const val MDC_JOB_TRACE_ID = "jobTraceId"
         const val MALFORMED = "malformed message"
         const val MAX_DELIVERIES_EXCEEDED = "max deliveries exceeded"
         private const val FROM_START = "0"
@@ -187,5 +196,17 @@ class SnippetJobConsumer(
         private const val MAX_CLAIM_ROUNDS = 20
         private const val RETRY_PAUSE_MS = 5_000L
         private const val STOP_MARGIN_MS = 5_000L
+    }
+}
+
+/** Runs [block] with the publishing request's trace id in the MDC (when the entry had one), removed afterwards. */
+private inline fun withJobTraceId(
+    traceId: String?,
+    block: () -> Unit,
+) {
+    if (traceId == null) {
+        block()
+    } else {
+        MDC.putCloseable(SnippetJobConsumer.MDC_JOB_TRACE_ID, traceId).use { block() }
     }
 }

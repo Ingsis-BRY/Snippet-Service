@@ -1,4 +1,8 @@
 spring:
+  # service.name in the ECS JSON logs
+  application:
+    name: snippet-service
+
   datasource:
     url: "jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB}"
     username: "${POSTGRES_USER}"
@@ -66,3 +70,22 @@ worker:
   stale-after: "${WORKER_STALE_AFTER:10m}"
   parser-check-interval: "${WORKER_PARSER_CHECK_INTERVAL:10m}"
   stream-max-length: 100000
+
+# Ops. Only `health` is exposed over HTTP, without a token (see SecurityConfiguration) and without details;
+# Swarm's healthcheck calls /actuator/health/readiness. The worker profile has no HTTP server, so no endpoint.
+# Every request is traced (traceId/spanId in the MDC, W3C `traceparent` on calls to the permission service, the
+# engine and Auth0); nothing is exported. JSON logs: set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0

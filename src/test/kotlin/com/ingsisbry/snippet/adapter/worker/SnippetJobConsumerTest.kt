@@ -13,8 +13,10 @@ import com.ingsisbry.snippet.application.job.JobReason
 import com.ingsisbry.snippet.application.job.SnippetJob
 import com.ingsisbry.snippet.application.job.SnippetTask
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.slf4j.MDC
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -55,6 +57,23 @@ class SnippetJobConsumerTest {
         assertEquals(listOf(job()), processed)
         assertEquals(listOf(entry.id), stream.acked)
         assertTrue(stream.deadLetters.isEmpty())
+    }
+
+    @Test
+    fun `the publishing request's trace id is in the MDC while the job runs, and only then`() {
+        val seen = mutableListOf<String?>()
+        answer = {
+            seen += MDC.get(SnippetJobConsumer.MDC_JOB_TRACE_ID)
+            Result.Success(JobOutcome.PROCESSED)
+        }
+        stream.add(SnippetJobMessage.toFields(job(), UUID.randomUUID(), Instant.EPOCH, TRACE_ID))
+        stream.publish(job())
+
+        consumer.pollOnce()
+
+        assertEquals(listOf(TRACE_ID, null), seen)
+        assertNull(MDC.get(SnippetJobConsumer.MDC_JOB_TRACE_ID))
+        assertEquals(2, stream.acked.size)
     }
 
     @Test
@@ -251,5 +270,6 @@ class SnippetJobConsumerTest {
 
         val SNIPPET_ID: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
         val VERSION_ID: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
+        const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
     }
 }

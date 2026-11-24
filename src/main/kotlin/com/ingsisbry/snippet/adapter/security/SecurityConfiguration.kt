@@ -19,6 +19,9 @@ class SecurityConfiguration {
         http
             .authorizeHttpRequests {
                 it
+                    // the Swarm healthcheck and the probes call it without a token; it shows no details
+                    .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**")
+                    .permitAll()
                     .requestMatchers(HttpMethod.GET, "/**")
                     .hasAuthority(READ_SCOPE)
                     .anyRequest()

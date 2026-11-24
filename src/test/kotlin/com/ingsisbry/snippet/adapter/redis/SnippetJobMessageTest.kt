@@ -48,6 +48,32 @@ class SnippetJobMessageTest {
         assertEquals(withTests, SnippetJobMessage.fromFields(SnippetJobMessage.toFields(withTests, jobId, now)))
     }
 
+    @Test
+    fun `the publishing request's trace id travels as an optional field`() {
+        val fields = SnippetJobMessage.toFields(job, jobId, now, TRACE_ID)
+
+        assertEquals(TRACE_ID, fields["traceId"])
+        assertEquals(TRACE_ID, SnippetJobMessage.traceId(fields))
+        assertEquals(job, SnippetJobMessage.fromFields(fields))
+    }
+
+    @Test
+    fun `an entry without a trace id, from before the field existed, still reads as a job`() {
+        val fields = SnippetJobMessage.toFields(job, jobId, now)
+
+        assertNull(SnippetJobMessage.traceId(fields))
+        assertEquals(job, SnippetJobMessage.fromFields(fields))
+    }
+
+    @ParameterizedTest
+    @MethodSource("badTraceIds")
+    fun `a trace id that is not a hex trace id is ignored, the job is not`(traceId: String) {
+        val fields = SnippetJobMessage.toFields(job, jobId, now) + ("traceId" to traceId)
+
+        assertNull(SnippetJobMessage.traceId(fields))
+        assertEquals(job, SnippetJobMessage.fromFields(fields))
+    }
+
     @ParameterizedTest
     @MethodSource("malformed")
     fun `malformed fields are rejected`(change: Map<String, String?>) {
@@ -58,6 +84,11 @@ class SnippetJobMessageTest {
     }
 
     companion object {
+        const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+        @JvmStatic
+        fun badTraceIds(): List<String> = listOf("", "xyz", "4BF92F3577B34DA6A3CE929D0E0E4736", "abc\ninjected")
+
         @JvmStatic
         fun malformed(): List<Map<String, String?>> =
             listOf(

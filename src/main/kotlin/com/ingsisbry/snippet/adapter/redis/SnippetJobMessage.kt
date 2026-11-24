@@ -8,7 +8,8 @@ import java.util.UUID
 
 /**
  * The fields of one entry of the `snippet.analysis` stream. Every value is a string; lists are comma separated
- * (`tasks` = `LINT,FORMAT`, `testIds` = `""` for all the snippet's tests).
+ * (`tasks` = `LINT,FORMAT`, `testIds` = `""` for all the snippet's tests). `traceId` is optional: the trace of the
+ * request that published the job, so the worker's logs can be correlated with it; older entries don't have it.
  */
 object SnippetJobMessage {
     const val TYPE = "snippet.analysis.v1"
@@ -21,11 +22,13 @@ object SnippetJobMessage {
     const val FIELD_REASON = "reason"
     const val FIELD_TEST_IDS = "testIds"
     const val FIELD_ENQUEUED_AT = "enqueuedAt"
+    const val FIELD_TRACE_ID = "traceId"
 
     fun toFields(
         job: SnippetJob,
         jobId: UUID,
         now: Instant,
+        traceId: String? = null,
     ): Map<String, String> =
         linkedMapOf(
             FIELD_TYPE to TYPE,
@@ -37,7 +40,10 @@ object SnippetJobMessage {
             FIELD_REASON to job.reason.name,
             FIELD_TEST_IDS to job.testIds.joinToString(SEPARATOR),
             FIELD_ENQUEUED_AT to now.toString(),
-        )
+        ).apply { traceId?.let { put(FIELD_TRACE_ID, it) } }
+
+    /** The publishing request's trace id; null when absent or not a 64/128-bit hex id (it ends up in the logs). */
+    fun traceId(fields: Map<String, String>): String? = fields[FIELD_TRACE_ID]?.takeIf { TRACE_ID.matches(it) }
 
     /** Null for anything that is not a well-formed job of this version of the message. */
     fun fromFields(fields: Map<String, String>): SnippetJob? =
@@ -74,4 +80,5 @@ object SnippetJobMessage {
             .filter { it.isNotEmpty() }
 
     private const val SEPARATOR = ","
+    private val TRACE_ID = Regex("[0-9a-f]{16}|[0-9a-f]{32}")
 }
