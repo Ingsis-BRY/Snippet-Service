@@ -1,8 +1,10 @@
 package com.ingsisbry.snippet
 
+import com.ingsisbry.snippet.adapter.web.TraceIdResponseFilter
 import com.ingsisbry.snippet.application.port.out.storage.SnippetContentStorage
 import com.sun.net.httpserver.HttpServer
 import io.micrometer.tracing.Tracer
+import org.hamcrest.Matchers.matchesPattern
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -89,6 +91,24 @@ class ApiOpsContextTest {
     fun `no other actuator endpoint is reachable`() {
         mockMvc.get("/actuator/env").andExpect { status { isUnauthorized() } }
         mockMvc.get("/actuator").andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `every response carries its trace id, rejected ones included`() {
+        // a public endpoint, and a protected one called without a token (401)
+        listOf("/actuator/health", "/snippets").forEach { path ->
+            mockMvc.get(path).andExpect {
+                header { string(TraceIdResponseFilter.HEADER, matchesPattern("[0-9a-f]{32}")) }
+            }
+        }
+    }
+
+    @Test
+    fun `the response returns the trace id of an incoming traceparent`() {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        mockMvc
+            .get("/actuator/health") { header("traceparent", "00-$traceId-00f067aa0ba902b7-01") }
+            .andExpect { header { string(TraceIdResponseFilter.HEADER, traceId) } }
     }
 
     @Test
