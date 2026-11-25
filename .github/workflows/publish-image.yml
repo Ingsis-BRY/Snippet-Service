@@ -15,7 +15,8 @@ env:
   IMAGE_NAME: ingsis-bry/snippet-service
 
 jobs:
-  # the same check as CI.yml: an image is only published from a commit whose tests, ktlint and detekt pass
+  # The same checks as CI.yml: an image is only published from a commit
+  # whose tests, ktlint and detekt pass.
   check:
     runs-on: ubuntu-latest
 
@@ -67,3 +68,19 @@ jobs:
           secrets: |
             github_username=${{ secrets.GH_PACKAGES_USERNAME }}
             github_token=${{ secrets.GH_PACKAGES_TOKEN }}
+
+  deploy-dev:
+    needs: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ask the infra repository to deploy this image to dev
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          gh workflow run deploy-service.yml \
+            --repo Ingsis-BRY/snippet-searcher-infra \
+            --ref dev \
+            -f service="${IMAGE_NAME#*/}" \
+            -f image="${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
