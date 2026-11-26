@@ -93,6 +93,7 @@ class ApiOpsContextTest {
         mockMvc.get("/actuator").andExpect { status { isUnauthorized() } }
     }
 
+    // no New Relic agent in tests, so the header falls back to Micrometer's trace id
     @Test
     fun `every response carries its trace id, rejected ones included`() {
         // a public endpoint, and a protected one called without a token (401)
