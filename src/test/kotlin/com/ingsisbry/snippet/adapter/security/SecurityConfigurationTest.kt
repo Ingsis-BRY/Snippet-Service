@@ -14,6 +14,7 @@ import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.jwt.JwtDecoder
@@ -21,13 +22,18 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.options
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import java.util.UUID
 
 @WebMvcTest(
     controllers = [UserController::class, SnippetSharingController::class],
-    properties = ["AUTH0_DOMAIN=auth0.test.invalid", "AUTH0_AUDIENCE=https://snippet-searcher-api"],
+    properties = [
+        "AUTH0_DOMAIN=auth0.test.invalid",
+        "AUTH0_AUDIENCE=https://snippet-searcher-api",
+        "CORS_ALLOWED_ORIGINS=https://snippets.example.org, http://localhost:5173",
+    ],
 )
 @Import(SecurityConfiguration::class, WebConfiguration::class, SnippetErrorMapper::class)
 class SecurityConfigurationTest {
@@ -105,7 +111,51 @@ class SecurityConfigurationTest {
         Mockito.verify(shareSnippet).execute(command)
     }
 
+    @Test
+    fun `a CORS preflight from an allowed origin is answered without a token`() {
+        mockMvc
+            .options("/snippets/$snippetId/share") {
+                header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
+                header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization, content-type")
+            }.andExpect {
+                status { isOk() }
+                header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN) }
+                header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET,POST,PUT,PATCH,DELETE,OPTIONS") }
+                header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "authorization, content-type") }
+                header { doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS) }
+            }
+        Mockito.verifyNoInteractions(shareSnippet)
+    }
+
+    @Test
+    fun `a CORS preflight from another origin is refused`() {
+        mockMvc
+            .options("/snippets/$snippetId/share") {
+                header(HttpHeaders.ORIGIN, "https://evil.example")
+                header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            }.andExpect {
+                status { isForbidden() }
+                header { doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN) }
+            }
+    }
+
+    @Test
+    fun `a request from an allowed origin gets the CORS headers and still needs a token`() {
+        mockMvc
+            .get("/users") { header(HttpHeaders.ORIGIN, "http://localhost:5173") }
+            .andExpect {
+                status { isUnauthorized() }
+                header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173") }
+                header {
+                    string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, "Content-Disposition, X-Trace-Id")
+                }
+            }
+        Mockito.verifyNoInteractions(searchUsers)
+    }
+
     private companion object {
+        const val ALLOWED_ORIGIN = "https://snippets.example.org"
         const val USER = "auth0|franco"
         const val READ = "read:snippets"
         const val WRITE = "write:snippets"
