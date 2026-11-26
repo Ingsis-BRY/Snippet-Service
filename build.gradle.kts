@@ -19,6 +19,8 @@ dependencies {
     // Micrometer Tracing over Brave: traceId/spanId in the MDC and W3C traceparent on outgoing calls; no exporter
     implementation("org.springframework.boot:spring-boot-micrometer-tracing-brave")
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
+    // New Relic agent API (a no-op without the agent): its trace id goes in the X-Trace-Id response header
+    implementation("com.newrelic.agent.java:newrelic-api:9.5.0")
     testImplementation("com.playtika.testcontainers:embedded-azurite:3.1.6")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
